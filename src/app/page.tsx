@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
-import { AlertTriangle, ShoppingCart, TrendingUp, Users, Wallet } from "lucide-react";
+import { ShoppingCart, TrendingUp, Users, Wallet } from "lucide-react";
 import { useSettings } from "@/components/settings-provider";
 import { ConnectionGate } from "@/components/connection-gate";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -12,7 +12,6 @@ import { OrderStatusBadge } from "@/components/status-badge";
 import {
   getCustomersTotal,
   getOrdersTotals,
-  getOutOfStockCount,
   getRecentOrders,
   getSalesReport,
   getTopSellers,
@@ -26,7 +25,6 @@ interface DashboardData {
   totalOrders: number;
   averageOrderValue: number;
   customersTotal: number;
-  outOfStock: number;
   statusTotals: WooOrdersTotals[];
   topSellers: WooTopSeller[];
   recentOrders: WooOrder[];
@@ -60,15 +58,13 @@ export default function DashboardPage() {
     let cancelled = false;
     startTransition(async () => {
       try {
-        const [sales, statusTotals, outOfStock, recentOrders, topSellers, customersTotal] =
-          await Promise.all([
-            getSalesReport(settings, period),
-            getOrdersTotals(settings),
-            getOutOfStockCount(settings),
-            getRecentOrders(settings, 5),
-            getTopSellers(settings, period),
-            getCustomersTotal(settings),
-          ]);
+        const [sales, statusTotals, recentOrders, topSellers, customersTotal] = await Promise.all([
+          getSalesReport(settings, period),
+          getOrdersTotals(settings),
+          getRecentOrders(settings, 5),
+          getTopSellers(settings, period),
+          getCustomersTotal(settings),
+        ]);
         if (cancelled) return;
         const currency = recentOrders[0]?.currency ?? "SEK";
         setData({
@@ -77,7 +73,6 @@ export default function DashboardPage() {
           totalOrders: sales.total_orders,
           averageOrderValue: sales.total_orders > 0 ? Number(sales.total_sales) / sales.total_orders : 0,
           customersTotal,
-          outOfStock,
           statusTotals,
           topSellers,
           recentOrders,
@@ -119,7 +114,7 @@ export default function DashboardPage() {
 
         {data && !loading && (
           <>
-            <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               <StatCard
                 icon={TrendingUp}
                 label="Försäljning"
@@ -132,12 +127,6 @@ export default function DashboardPage() {
                 value={formatMoney(data.averageOrderValue, data.currency)}
               />
               <StatCard icon={Users} label="Kunder totalt" value={String(data.customersTotal)} />
-              <StatCard
-                icon={AlertTriangle}
-                label="Slut i lager"
-                value={String(data.outOfStock)}
-                tone={data.outOfStock > 0 ? "warning" : undefined}
-              />
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
@@ -254,21 +243,15 @@ function StatCard({
   icon: Icon,
   label,
   value,
-  tone,
 }: {
   icon: React.ComponentType<{ size?: number; className?: string }>;
   label: string;
   value: string;
-  tone?: "warning";
 }) {
   return (
     <Card>
       <CardContent className="flex items-center gap-3">
-        <div
-          className={`rounded-md p-2 ${
-            tone === "warning" ? "bg-warning-bg text-warning" : "bg-primary/10 text-primary"
-          }`}
-        >
+        <div className="rounded-md p-2 bg-primary/10 text-primary">
           <Icon size={18} />
         </div>
         <div>

@@ -227,14 +227,6 @@ export async function getCustomersTotal(settings: WooSettings): Promise<number> 
   return data.reduce((sum, entry) => sum + entry.total, 0);
 }
 
-export async function getOutOfStockCount(settings: WooSettings): Promise<number> {
-  const { total } = await requestList<WooProduct>(settings, "/products", {
-    stock_status: "outofstock",
-    per_page: 1,
-  });
-  return total;
-}
-
 export async function getRecentOrders(settings: WooSettings, count = 5): Promise<WooOrder[]> {
   const { items } = await listOrders(settings, { perPage: count });
   return items;
