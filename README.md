@@ -1,36 +1,47 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# WooCommerce Manager
 
-## Getting Started
+Windows-skrivbordsapp (Tauri + Next.js) för att hantera en WooCommerce-butik: ordrar, produkter/lager, kunder och en översikt med statistik. Ansluter direkt till butikens WooCommerce REST API — ingen egen server eller databas behövs.
 
-First, run the development server:
+## Utveckling
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run tauri dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Detta startar Next.js-dev-servern (port 3000) och öppnar appfönstret. Om port 3000 redan används av ett annat projekt, stäng det först eller ändra `devUrl` i `src-tauri/tauri.conf.json`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Bygga en installerbar version
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run tauri build
+```
 
-## Learn More
+Producerar en signerbar `.exe`/NSIS-installer i `src-tauri/target/release/bundle/`. En release-build använder alltid de inbyggda, statiskt exporterade filerna (inte `devUrl`).
 
-To learn more about Next.js, take a look at the following resources:
+## Ansluta till en butik
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Öppna appen → Inställningar och ange:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+1. Butikens webbadress (måste vara HTTPS)
+2. Consumer Key och Consumer Secret från WooCommerce → Inställningar → Avancerat → REST API (behörighet "Läs/Skriv")
 
-## Deploy on Vercel
+## Verktygskedja (Windows/Rust)
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Den här datorn har två Visual Studio-installationer. Den nyare (VS 2026 "18") saknar delar av C++ Desktop-komponenterna, vilket får `cargo build` att misslyckas med länkfel (`msvcrt.lib`/`excpt.h` saknas). `.cargo/config.toml` i projektroten pinnar därför bygget till den fullständiga VS 2022-installationen. Filen är **inte** incheckad i git (den pekar på sökvägar som bara finns på den här datorn) — GitHub Actions-runnern har en fungerande toolchain och behöver den inte. Om VS 2022 någonsin avinstalleras eller uppdateras till en ny MSVC-version behöver filen regenereras lokalt (kör `vcvarsall.bat x64` och dumpa miljövariablerna på nytt) — eller åtgärda VS 2026-installationen via Visual Studio Installer och ta bort filen.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Släppa en ny version (auto-uppdatering)
+
+Appen kollar automatiskt efter uppdateringar mot GitHub Releases för detta repo (`Hulter92/woocommerce-manager`). Så här släpper du en ny version:
+
+1. Höj versionsnumret i `src-tauri/tauri.conf.json` (fältet `"version"`) och i `package.json`.
+2. Committa ändringen, tagga den och pusha taggen:
+   ```bash
+   git add -A && git commit -m "Bump version to 0.2.0"
+   git tag v0.2.0
+   git push origin master --tags
+   ```
+3. GitHub Actions (`.github/workflows/release.yml`) bygger, signerar och publicerar automatiskt en Release med installerarna + `latest.json`. Ta en titt under repots "Actions"-flik för att följa förloppet.
+4. Alla som redan har appen installerad får en banner i appen ("En ny version är tillgänglig") nästa gång de öppnar den, och kan uppdatera med ett klick.
+
+Signeringsnyckeln (`src-tauri/updater.key`) finns bara lokalt på den här datorn och som hemligheterna `TAURI_SIGNING_PRIVATE_KEY`/`TAURI_SIGNING_PRIVATE_KEY_PASSWORD` i GitHub-repots inställningar. Tappar du båda kan gamla installationer aldrig verifiera framtida uppdateringar — då måste alla installera om appen manuellt med en ny nyckel.

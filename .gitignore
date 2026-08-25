@@ -39,3 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Local-machine-only Rust toolchain override (pins cargo to this computer's
+# working Visual Studio install — see README's "Verktygskedja" section).
+# GitHub Actions' windows-latest runner has a complete toolchain and doesn't
+# need or have these exact paths, so this must never be committed.
+/.cargo/
