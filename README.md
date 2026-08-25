@@ -45,3 +45,5 @@ Appen kollar automatiskt efter uppdateringar mot GitHub Releases för detta repo
 4. Alla som redan har appen installerad får en banner i appen ("En ny version är tillgänglig") nästa gång de öppnar den, och kan uppdatera med ett klick.
 
 Signeringsnyckeln (`src-tauri/updater.key`) finns bara lokalt på den här datorn och som hemligheterna `TAURI_SIGNING_PRIVATE_KEY`/`TAURI_SIGNING_PRIVATE_KEY_PASSWORD` i GitHub-repots inställningar. Tappar du båda kan gamla installationer aldrig verifiera framtida uppdateringar — då måste alla installera om appen manuellt med en ny nyckel.
+
+**Varför repot är publikt:** appens auto-uppdaterare hämtar `latest.json` och installerarna direkt från GitHub Releases utan att logga in. GitHub tillåter inte anonym nedladdning av Release-filer i privata repon, så repot måste vara publikt för att uppdateringskontrollen ska fungera. Inga hemligheter ligger i koden — signeringsnyckeln och API-nycklar till butiker är alltid lokala/hemligheter, aldrig incheckade.
