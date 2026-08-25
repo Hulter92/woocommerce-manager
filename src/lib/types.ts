@@ -41,6 +41,8 @@ export interface WooOrder {
   billing: WooAddress & { email: string; phone: string };
   shipping: WooAddress;
   line_items: WooLineItem[];
+  shipping_lines: { id: number; method_title: string }[];
+  refunds: { id: number; total: string }[];
 }
 
 export type WooOrderStatus =
@@ -128,3 +130,18 @@ export interface WooTopSeller {
 }
 
 export type WooReportPeriod = "today" | "week" | "month" | "last_month" | "year";
+
+export interface WooMonthlyReportLocation {
+  name: string;
+  netSales: number;
+}
+
+export interface WooMonthlyReport {
+  yearMonth: string;
+  currency: string;
+  bankTotal: number;
+  vatTotal: number;
+  locations: WooMonthlyReportLocation[];
+  refundsTotal: number;
+  orderCount: number;
+}

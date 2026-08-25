@@ -2,6 +2,7 @@ import { fetch } from "@tauri-apps/plugin-http";
 import { normalizeStoreUrl, type WooSettings } from "./settings";
 import type {
   WooCustomer,
+  WooMonthlyReport,
   WooOrder,
   WooOrderStatus,
   WooOrdersTotals,
@@ -27,7 +28,7 @@ export interface ListResult<T> {
   totalPages: number;
 }
 
-type QueryParams = Record<string, string | number | boolean | undefined>;
+type QueryParams = Record<string, string | number | boolean | string[] | undefined>;
 
 function authHeader(settings: WooSettings): string {
   const token = btoa(`${settings.consumerKey}:${settings.consumerSecret}`);
@@ -44,7 +45,12 @@ function buildUrl(
   const url = new URL(`${base}/wp-json/${namespace}${path}`);
   if (params) {
     for (const [key, value] of Object.entries(params)) {
-      if (value !== undefined) url.searchParams.set(key, String(value));
+      if (value === undefined) continue;
+      if (Array.isArray(value)) {
+        for (const v of value) url.searchParams.append(`${key}[]`, v);
+      } else {
+        url.searchParams.set(key, String(value));
+      }
     }
   }
   return url.toString();
@@ -326,4 +332,80 @@ export async function getCustomersTotal(settings: WooSettings): Promise<number> 
 export async function getRecentOrders(settings: WooSettings, count = 5): Promise<WooOrder[]> {
   const { items } = await listOrders(settings, { perPage: count });
   return items;
+}
+
+// Monthly (bookkeeping) report
+//
+// Splits net sales (excl. VAT) by pickup location — read from each order's
+// shipping method title, since this store uses one "local pickup" shipping
+// method per physical shop rather than a dedicated location field.
+
+async function getAllOrdersInRange(
+  settings: WooSettings,
+  after: string,
+  before: string,
+  statuses: WooOrderStatus[]
+): Promise<WooOrder[]> {
+  const perPage = 100;
+  const all: WooOrder[] = [];
+  let page = 1;
+  for (;;) {
+    const { items, totalPages } = await requestList<WooOrder>(settings, "/orders", {
+      after,
+      before,
+      status: statuses,
+      per_page: perPage,
+      page,
+      orderby: "date",
+      order: "asc",
+    });
+    all.push(...items);
+    if (page >= totalPages || items.length === 0) break;
+    page += 1;
+  }
+  return all;
+}
+
+export async function getMonthlyReport(
+  settings: WooSettings,
+  yearMonth: string
+): Promise<WooMonthlyReport> {
+  const [year, month] = yearMonth.split("-").map(Number);
+  const after = new Date(year, month - 1, 1).toISOString();
+  const before = new Date(year, month, 1).toISOString();
+
+  const orders = await getAllOrdersInRange(settings, after, before, ["completed", "processing"]);
+
+  let bankTotal = 0;
+  let vatTotal = 0;
+  let refundsTotal = 0;
+  const locationTotals = new Map<string, number>();
+
+  for (const order of orders) {
+    const total = Number(order.total);
+    const tax = Number(order.total_tax);
+    bankTotal += total;
+    vatTotal += tax;
+
+    const location = order.shipping_lines[0]?.method_title || "Okänd";
+    locationTotals.set(location, (locationTotals.get(location) ?? 0) + (total - tax));
+
+    for (const refund of order.refunds) {
+      refundsTotal += Number(refund.total);
+    }
+  }
+
+  const locations = Array.from(locationTotals, ([name, netSales]) => ({ name, netSales })).sort(
+    (a, b) => b.netSales - a.netSales
+  );
+
+  return {
+    yearMonth,
+    currency: orders[0]?.currency ?? "SEK",
+    bankTotal,
+    vatTotal,
+    locations,
+    refundsTotal,
+    orderCount: orders.length,
+  };
 }
