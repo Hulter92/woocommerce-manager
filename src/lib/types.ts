@@ -84,7 +84,7 @@ export interface WooSalesReport {
 
 export interface WooTopSeller {
   product_id: number;
-  title: string;
+  name: string;
   quantity: number;
 }
 

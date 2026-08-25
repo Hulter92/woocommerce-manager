@@ -168,24 +168,14 @@ export default function DashboardPage() {
                     {PERIOD_OPTIONS.find((o) => o.value === period)?.label}
                   </p>
                 </CardHeader>
-                <CardContent className="p-0">
-                  <table className="w-full text-sm">
-                    <tbody>
-                      {data.topSellers.map((item) => (
-                        <tr key={item.product_id} className="border-b border-border last:border-0">
-                          <td className="px-4 py-2.5">{item.title}</td>
-                          <td className="px-4 py-2.5 text-right text-muted">{item.quantity} st</td>
-                        </tr>
-                      ))}
-                      {data.topSellers.length === 0 && (
-                        <tr>
-                          <td className="px-4 py-6 text-center text-muted" colSpan={2}>
-                            Inga sålda produkter under perioden.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
+                <CardContent>
+                  {data.topSellers.length > 0 ? (
+                    <TopSellersList items={data.topSellers} />
+                  ) : (
+                    <p className="text-sm text-muted text-center py-6">
+                      Inga sålda produkter under perioden.
+                    </p>
+                  )}
                 </CardContent>
               </Card>
             </div>
@@ -229,6 +219,34 @@ export default function DashboardPage() {
         )}
       </div>
     </ConnectionGate>
+  );
+}
+
+function TopSellersList({ items }: { items: WooTopSeller[] }) {
+  const top = items.slice(0, 8);
+  const max = Math.max(...top.map((i) => i.quantity), 1);
+  return (
+    <ol className="space-y-3">
+      {top.map((item, index) => (
+        <li key={item.product_id} className="flex items-center gap-3">
+          <span className="w-4 shrink-0 text-right text-xs tabular-nums text-muted">
+            {index + 1}
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm">{item.name}</p>
+            <div className="mt-1 h-1.5 rounded-full bg-muted-bg">
+              <div
+                className="h-full rounded-full bg-primary"
+                style={{ width: `${Math.max((item.quantity / max) * 100, 4)}%` }}
+              />
+            </div>
+          </div>
+          <span className="w-12 shrink-0 text-right text-sm tabular-nums text-muted">
+            {item.quantity} st
+          </span>
+        </li>
+      ))}
+    </ol>
   );
 }
 
