@@ -41,8 +41,6 @@ export interface WooOrder {
   billing: WooAddress & { email: string; phone: string };
   shipping: WooAddress;
   line_items: WooLineItem[];
-  shipping_lines: { id: number; method_title: string }[];
-  refunds: { id: number; total: string }[];
   meta_data: { id: number; key: string; value: unknown }[];
 }
 

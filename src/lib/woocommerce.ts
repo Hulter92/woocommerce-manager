@@ -354,6 +354,32 @@ function getOrderMeta(order: WooOrder, key: string): string | undefined {
   return value === "" ? undefined : value;
 }
 
+// Refunds aren't embedded in the order object — WooCommerce exposes them
+// only via this sub-resource. "amount" is a positive magnitude, so it must
+// be subtracted (not added) to get a bookkeeping-style negative total.
+async function getOrderRefundTotal(settings: WooSettings, orderId: number): Promise<number> {
+  const { data } = await request<{ amount: string }[]>(settings, `/orders/${orderId}/refunds`);
+  return data.reduce((sum, refund) => sum + Number(refund.amount), 0);
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<R>
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let next = 0;
+  async function worker() {
+    for (;;) {
+      const index = next++;
+      if (index >= items.length) return;
+      results[index] = await fn(items[index]);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
+
 async function getAllOrdersInRange(
   settings: WooSettings,
   after: string,
@@ -389,13 +415,16 @@ export async function getMonthlyReport(
   const before = new Date(year, month, 1).toISOString();
 
   const orders = await getAllOrdersInRange(settings, after, before, ["completed", "processing"]);
+  const refundTotals = await mapWithConcurrency(orders, 10, (order) =>
+    getOrderRefundTotal(settings, order.id)
+  );
 
   let bankTotal = 0;
   let vatTotal = 0;
   let refundsTotal = 0;
   const locationTotals = new Map<string, number>();
 
-  for (const order of orders) {
+  orders.forEach((order, index) => {
     const total = Number(order.total);
     const tax = Number(order.total_tax);
     bankTotal += total;
@@ -405,10 +434,8 @@ export async function getMonthlyReport(
       getOrderMeta(order, "pickup_store") ?? getOrderMeta(order, "pickup_store_id") ?? "Okänd";
     locationTotals.set(location, (locationTotals.get(location) ?? 0) + (total - tax));
 
-    for (const refund of order.refunds) {
-      refundsTotal += Number(refund.total);
-    }
-  }
+    refundsTotal -= refundTotals[index];
+  });
 
   const locations = Array.from(locationTotals, ([name, netSales]) => ({ name, netSales })).sort(
     (a, b) => b.netSales - a.netSales
