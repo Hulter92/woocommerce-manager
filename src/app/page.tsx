@@ -33,9 +33,9 @@ interface DashboardData {
 }
 
 const PERIOD_OPTIONS: { value: WooReportPeriod; label: string }[] = [
-  { value: "today", label: "Idag" },
   { value: "week", label: "Denna vecka" },
   { value: "month", label: "Denna månad" },
+  { value: "last_month", label: "Föregående månad" },
   { value: "year", label: "Detta år" },
 ];
 

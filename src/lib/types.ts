@@ -88,4 +88,4 @@ export interface WooTopSeller {
   quantity: number;
 }
 
-export type WooReportPeriod = "today" | "week" | "month" | "year";
+export type WooReportPeriod = "week" | "month" | "last_month" | "year";
