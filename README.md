@@ -26,6 +26,11 @@ Producerar en signerbar `.exe`/NSIS-installer i `src-tauri/target/release/bundle
 1. Butikens webbadress (måste vara HTTPS)
 2. Consumer Key och Consumer Secret från WooCommerce → Inställningar → Avancerat → REST API (behörighet "Läs/Skriv")
 
+## API:er som används
+
+- `wc/v3` (standard WooCommerce REST API) för allt som listar/skapar/ändrar — ordrar, produkter, kunder.
+- `wc-analytics` (WooCommerce Admin/Analytics-API:et, inbyggt sedan WooCommerce 4.0) för Översikt-sidans statistik (`src/lib/woocommerce.ts`, funktionerna `getRevenueStats`/`getTopSellers`). Det stödjer valfria datumintervall (`before`/`after`), vilket den äldre `wc/v3/reports`-varianten inte gör — därför kan periodväljaren erbjuda "Idag" utan problem. Kräver att WooCommerce Admin är aktivt (är det som standard i alla moderna installationer).
+
 ## Verktygskedja (Windows/Rust)
 
 Den här datorn har två Visual Studio-installationer. Den nyare (VS 2026 "18") saknar delar av C++ Desktop-komponenterna, vilket får `cargo build` att misslyckas med länkfel (`msvcrt.lib`/`excpt.h` saknas). `.cargo/config.toml` i projektroten pinnar därför bygget till den fullständiga VS 2022-installationen. Filen är **inte** incheckad i git (den pekar på sökvägar som bara finns på den här datorn) — GitHub Actions-runnern har en fungerande toolchain och behöver den inte. Om VS 2022 någonsin avinstalleras eller uppdateras till en ny MSVC-version behöver filen regenereras lokalt (kör `vcvarsall.bat x64` och dumpa miljövariablerna på nytt) — eller åtgärda VS 2026-installationen via Visual Studio Installer och ta bort filen.
