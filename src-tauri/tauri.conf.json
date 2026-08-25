@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "WooCommerce Manager",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "identifier": "com.davidhulterstrom.woocommerce-manager",
   "build": {
     "frontendDist": "../out",

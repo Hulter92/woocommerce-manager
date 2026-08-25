@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { Fragment, useEffect, useState, useTransition } from "react";
 import Image from "next/image";
-import { Save } from "lucide-react";
+import { ChevronDown, ChevronRight, Save } from "lucide-react";
 import { useSettings } from "@/components/settings-provider";
 import { ConnectionGate } from "@/components/connection-gate";
 import { Card, CardContent } from "@/components/ui/card";
@@ -10,8 +10,14 @@ import { Input, Select } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { LoadingBlock, Spinner } from "@/components/ui/spinner";
-import { listProducts, updateProduct, WooCommerceApiError } from "@/lib/woocommerce";
-import type { WooProduct } from "@/lib/types";
+import {
+  listProducts,
+  listVariations,
+  updateProduct,
+  updateVariation,
+  WooCommerceApiError,
+} from "@/lib/woocommerce";
+import type { WooProduct, WooVariation } from "@/lib/types";
 
 const STOCK_LABEL: Record<WooProduct["stock_status"], { label: string; tone: "success" | "danger" | "warning" }> = {
   instock: { label: "I lager", tone: "success" },
@@ -22,6 +28,15 @@ const STOCK_LABEL: Record<WooProduct["stock_status"], { label: string; tone: "su
 interface EditState {
   regular_price: string;
   stock_quantity: string;
+}
+
+function toEditState(item: Pick<WooProduct | WooVariation, "regular_price" | "stock_quantity">): EditState {
+  return { regular_price: item.regular_price, stock_quantity: String(item.stock_quantity ?? "") };
+}
+
+function variationLabel(variation: WooVariation): string {
+  const attrs = variation.attributes.map((a) => a.option).filter(Boolean).join(" / ");
+  return attrs || variation.sku || `Variant #${variation.id}`;
 }
 
 export default function ProdukterPage() {
@@ -36,6 +51,12 @@ export default function ProdukterPage() {
   const [savingId, setSavingId] = useState<number | null>(null);
   const [loading, startTransition] = useTransition();
 
+  const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  const [variationsByProduct, setVariationsByProduct] = useState<Record<number, WooVariation[]>>({});
+  const [variationEdits, setVariationEdits] = useState<Record<number, EditState>>({});
+  const [loadingVariationsFor, setLoadingVariationsFor] = useState<number | null>(null);
+  const [savingVariationId, setSavingVariationId] = useState<number | null>(null);
+
   useEffect(() => {
     if (!configured) return;
     let cancelled = false;
@@ -45,14 +66,7 @@ export default function ProdukterPage() {
         if (cancelled) return;
         setProducts(res.items);
         setTotalPages(Math.max(1, res.totalPages));
-        setEdits(
-          Object.fromEntries(
-            res.items.map((p) => [
-              p.id,
-              { regular_price: p.regular_price, stock_quantity: String(p.stock_quantity ?? "") },
-            ])
-          )
-        );
+        setEdits(Object.fromEntries(res.items.map((p) => [p.id, toEditState(p)])));
         setError(null);
       } catch (err) {
         if (cancelled) return;
@@ -64,13 +78,9 @@ export default function ProdukterPage() {
     };
   }, [configured, settings, page, search, stockStatus]);
 
-  function isDirty(product: WooProduct) {
-    const edit = edits[product.id];
+  function isDirty(edit: EditState | undefined, item: Pick<WooProduct | WooVariation, "regular_price" | "stock_quantity">) {
     if (!edit) return false;
-    return (
-      edit.regular_price !== product.regular_price ||
-      edit.stock_quantity !== String(product.stock_quantity ?? "")
-    );
+    return edit.regular_price !== item.regular_price || edit.stock_quantity !== String(item.stock_quantity ?? "");
   }
 
   async function handleSave(product: WooProduct) {
@@ -84,17 +94,60 @@ export default function ProdukterPage() {
         stock_quantity: edit.stock_quantity === "" ? null : Number(edit.stock_quantity),
       });
       setProducts((prev) => prev.map((p) => (p.id === product.id ? updated : p)));
-      setEdits((prev) => ({
-        ...prev,
-        [product.id]: {
-          regular_price: updated.regular_price,
-          stock_quantity: String(updated.stock_quantity ?? ""),
-        },
-      }));
+      setEdits((prev) => ({ ...prev, [product.id]: toEditState(updated) }));
     } catch (err) {
       setError(err instanceof WooCommerceApiError ? err.message : "Kunde inte spara produkten.");
     } finally {
       setSavingId(null);
+    }
+  }
+
+  async function toggleExpand(product: WooProduct) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(product.id)) {
+        next.delete(product.id);
+      } else {
+        next.add(product.id);
+      }
+      return next;
+    });
+
+    if (variationsByProduct[product.id]) return;
+    setLoadingVariationsFor(product.id);
+    try {
+      const variations = await listVariations(settings, product.id);
+      setVariationsByProduct((prev) => ({ ...prev, [product.id]: variations }));
+      setVariationEdits((prev) => ({
+        ...prev,
+        ...Object.fromEntries(variations.map((v) => [v.id, toEditState(v)])),
+      }));
+    } catch (err) {
+      setError(err instanceof WooCommerceApiError ? err.message : "Kunde inte hämta varianter.");
+    } finally {
+      setLoadingVariationsFor(null);
+    }
+  }
+
+  async function handleSaveVariation(productId: number, variation: WooVariation) {
+    const edit = variationEdits[variation.id];
+    if (!edit) return;
+    setSavingVariationId(variation.id);
+    setError(null);
+    try {
+      const updated = await updateVariation(settings, productId, variation.id, {
+        regular_price: edit.regular_price,
+        stock_quantity: edit.stock_quantity === "" ? null : Number(edit.stock_quantity),
+      });
+      setVariationsByProduct((prev) => ({
+        ...prev,
+        [productId]: (prev[productId] ?? []).map((v) => (v.id === variation.id ? updated : v)),
+      }));
+      setVariationEdits((prev) => ({ ...prev, [variation.id]: toEditState(updated) }));
+    } catch (err) {
+      setError(err instanceof WooCommerceApiError ? err.message : "Kunde inte spara varianten.");
+    } finally {
+      setSavingVariationId(null);
     }
   }
 
@@ -150,74 +203,176 @@ export default function ProdukterPage() {
                 </thead>
                 <tbody>
                   {products.map((product) => {
+                    const isVariable = product.type === "variable";
                     const edit = edits[product.id] ?? { regular_price: "", stock_quantity: "" };
-                    const dirty = isDirty(product);
+                    const dirty = isDirty(edit, product);
                     const stockInfo = STOCK_LABEL[product.stock_status];
+                    const isExpanded = expanded.has(product.id);
+                    const variations = variationsByProduct[product.id];
+
                     return (
-                      <tr key={product.id} className="border-b border-border last:border-0">
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-3">
-                            {product.images[0] ? (
-                              <Image
-                                src={product.images[0].src}
-                                alt={product.images[0].alt || product.name}
-                                width={36}
-                                height={36}
-                                className="rounded object-cover"
-                                unoptimized
-                              />
-                            ) : (
-                              <div className="h-9 w-9 rounded bg-muted-bg" />
-                            )}
-                            <div>
-                              <p className="font-medium">{product.name}</p>
-                              {product.sku && (
-                                <p className="text-xs text-muted">SKU: {product.sku}</p>
+                      <Fragment key={product.id}>
+                        <tr className="border-b border-border last:border-0">
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              {isVariable && (
+                                <button
+                                  onClick={() => toggleExpand(product)}
+                                  className="shrink-0 text-muted hover:text-foreground"
+                                  aria-label={isExpanded ? "Dölj varianter" : "Visa varianter"}
+                                >
+                                  {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                                </button>
                               )}
+                              {product.images[0] ? (
+                                <Image
+                                  src={product.images[0].src}
+                                  alt={product.images[0].alt || product.name}
+                                  width={36}
+                                  height={36}
+                                  className="rounded object-cover"
+                                  unoptimized
+                                />
+                              ) : (
+                                <div className="h-9 w-9 rounded bg-muted-bg shrink-0" />
+                              )}
+                              <div className="min-w-0">
+                                <p className="font-medium truncate">{product.name}</p>
+                                {product.sku && (
+                                  <p className="text-xs text-muted">SKU: {product.sku}</p>
+                                )}
+                              </div>
                             </div>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <Input
-                            value={edit.regular_price}
-                            onChange={(e) =>
-                              setEdits((prev) => ({
-                                ...prev,
-                                [product.id]: { ...edit, regular_price: e.target.value },
-                              }))
-                            }
-                            className="w-24"
-                          />
-                        </td>
-                        <td className="px-4 py-3">
-                          <Input
-                            type="number"
-                            value={edit.stock_quantity}
-                            disabled={!product.manage_stock}
-                            onChange={(e) =>
-                              setEdits((prev) => ({
-                                ...prev,
-                                [product.id]: { ...edit, stock_quantity: e.target.value },
-                              }))
-                            }
-                            className="w-20"
-                          />
-                        </td>
-                        <td className="px-4 py-3">
-                          <Badge tone={stockInfo.tone}>{stockInfo.label}</Badge>
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            disabled={!dirty || savingId === product.id}
-                            onClick={() => handleSave(product)}
-                          >
-                            {savingId === product.id ? <Spinner /> : <Save size={14} />}
-                            Spara
-                          </Button>
-                        </td>
-                      </tr>
+                          </td>
+                          <td className="px-4 py-3">
+                            {isVariable ? (
+                              <button
+                                onClick={() => toggleExpand(product)}
+                                className="text-sm text-primary hover:underline"
+                              >
+                                Varierar
+                              </button>
+                            ) : (
+                              <Input
+                                value={edit.regular_price}
+                                onChange={(e) =>
+                                  setEdits((prev) => ({
+                                    ...prev,
+                                    [product.id]: { ...edit, regular_price: e.target.value },
+                                  }))
+                                }
+                                className="w-24"
+                              />
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            {isVariable ? (
+                              <span className="text-sm text-muted">—</span>
+                            ) : (
+                              <Input
+                                type="number"
+                                value={edit.stock_quantity}
+                                disabled={!product.manage_stock}
+                                onChange={(e) =>
+                                  setEdits((prev) => ({
+                                    ...prev,
+                                    [product.id]: { ...edit, stock_quantity: e.target.value },
+                                  }))
+                                }
+                                className="w-20"
+                              />
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            <Badge tone={stockInfo.tone}>{stockInfo.label}</Badge>
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            {!isVariable && (
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                disabled={!dirty || savingId === product.id}
+                                onClick={() => handleSave(product)}
+                              >
+                                {savingId === product.id ? <Spinner /> : <Save size={14} />}
+                                Spara
+                              </Button>
+                            )}
+                          </td>
+                        </tr>
+
+                        {isVariable && isExpanded && (
+                          <tr className="border-b border-border last:border-0">
+                            <td colSpan={5} className="bg-muted-bg/50 px-4 py-3">
+                              {loadingVariationsFor === product.id ? (
+                                <LoadingBlock label="Laddar varianter…" />
+                              ) : variations && variations.length > 0 ? (
+                                <table className="w-full text-sm">
+                                  <tbody>
+                                    {variations.map((variation) => {
+                                      const vEdit =
+                                        variationEdits[variation.id] ?? toEditState(variation);
+                                      const vDirty = isDirty(vEdit, variation);
+                                      const vStockInfo = STOCK_LABEL[variation.stock_status];
+                                      return (
+                                        <tr key={variation.id} className="border-b border-border last:border-0">
+                                          <td className="py-2 pl-6">{variationLabel(variation)}</td>
+                                          <td className="py-2">
+                                            <Input
+                                              value={vEdit.regular_price}
+                                              onChange={(e) =>
+                                                setVariationEdits((prev) => ({
+                                                  ...prev,
+                                                  [variation.id]: { ...vEdit, regular_price: e.target.value },
+                                                }))
+                                              }
+                                              className="w-24"
+                                            />
+                                          </td>
+                                          <td className="py-2">
+                                            <Input
+                                              type="number"
+                                              value={vEdit.stock_quantity}
+                                              disabled={!variation.manage_stock}
+                                              onChange={(e) =>
+                                                setVariationEdits((prev) => ({
+                                                  ...prev,
+                                                  [variation.id]: { ...vEdit, stock_quantity: e.target.value },
+                                                }))
+                                              }
+                                              className="w-20"
+                                            />
+                                          </td>
+                                          <td className="py-2">
+                                            <Badge tone={vStockInfo.tone}>{vStockInfo.label}</Badge>
+                                          </td>
+                                          <td className="py-2 text-right">
+                                            <Button
+                                              size="sm"
+                                              variant="secondary"
+                                              disabled={!vDirty || savingVariationId === variation.id}
+                                              onClick={() => handleSaveVariation(product.id, variation)}
+                                            >
+                                              {savingVariationId === variation.id ? (
+                                                <Spinner />
+                                              ) : (
+                                                <Save size={14} />
+                                              )}
+                                              Spara
+                                            </Button>
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              ) : (
+                                <p className="text-sm text-muted py-2">Inga varianter hittades.</p>
+                              )}
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
                     );
                   })}
                   {products.length === 0 && (

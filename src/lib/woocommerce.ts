@@ -9,6 +9,7 @@ import type {
   WooReportPeriod,
   WooRevenueStats,
   WooTopSeller,
+  WooVariation,
 } from "./types";
 
 export class WooCommerceApiError extends Error {
@@ -145,6 +146,11 @@ export async function updateOrderStatus(
   return data;
 }
 
+export async function getOrder(settings: WooSettings, orderId: number): Promise<WooOrder> {
+  const { data } = await request<WooOrder>(settings, `/orders/${orderId}`);
+  return data;
+}
+
 // Products
 
 export interface ListProductsOptions {
@@ -173,6 +179,30 @@ export async function updateProduct(
     method: "PUT",
     body: changes,
   });
+  return data;
+}
+
+export async function listVariations(
+  settings: WooSettings,
+  productId: number
+): Promise<WooVariation[]> {
+  const { data } = await request<WooVariation[]>(settings, `/products/${productId}/variations`, {
+    params: { per_page: 100 },
+  });
+  return data;
+}
+
+export async function updateVariation(
+  settings: WooSettings,
+  productId: number,
+  variationId: number,
+  changes: Partial<Pick<WooVariation, "regular_price" | "sale_price" | "stock_quantity">>
+): Promise<WooVariation> {
+  const { data } = await request<WooVariation>(
+    settings,
+    `/products/${productId}/variations/${variationId}`,
+    { method: "PUT", body: changes }
+  );
   return data;
 }
 

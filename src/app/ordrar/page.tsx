@@ -9,6 +9,7 @@ import { Input, Select } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { LoadingBlock } from "@/components/ui/spinner";
 import { ORDER_STATUS_OPTIONS, OrderStatusBadge } from "@/components/status-badge";
+import { OrderDetailDialog } from "@/components/order-detail-dialog";
 import { listOrders, updateOrderStatus, WooCommerceApiError } from "@/lib/woocommerce";
 import type { WooOrder, WooOrderStatus } from "@/lib/types";
 
@@ -47,6 +48,7 @@ function OrdrarPageInner() {
   const [search, setSearch] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<number | null>(null);
+  const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
   const [loading, startTransition] = useTransition();
 
   useEffect(() => {
@@ -143,7 +145,11 @@ function OrdrarPageInner() {
                 </thead>
                 <tbody>
                   {orders.map((order) => (
-                    <tr key={order.id} className="border-b border-border last:border-0 align-top">
+                    <tr
+                      key={order.id}
+                      onClick={() => setSelectedOrderId(order.id)}
+                      className="cursor-pointer border-b border-border last:border-0 align-top hover:bg-muted-bg"
+                    >
                       <td className="px-4 py-3 font-medium">#{order.number}</td>
                       <td className="px-4 py-3">
                         <p>
@@ -152,7 +158,7 @@ function OrdrarPageInner() {
                         <p className="text-xs text-muted">{order.billing.email}</p>
                       </td>
                       <td className="px-4 py-3 text-muted">{formatDate(order.date_created)}</td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center gap-2">
                           <OrderStatusBadge status={order.status} />
                           <Select
@@ -213,6 +219,12 @@ function OrdrarPageInner() {
           </div>
         </div>
       </div>
+
+      <OrderDetailDialog
+        orderId={selectedOrderId}
+        settings={settings}
+        onClose={() => setSelectedOrderId(null)}
+      />
     </ConnectionGate>
   );
 }

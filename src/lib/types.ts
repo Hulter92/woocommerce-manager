@@ -8,8 +8,21 @@ export interface WooLineItem {
   id: number;
   name: string;
   quantity: number;
+  price: number;
   total: string;
   sku: string;
+}
+
+export interface WooAddress {
+  first_name: string;
+  last_name: string;
+  company: string;
+  address_1: string;
+  address_2: string;
+  city: string;
+  state: string;
+  postcode: string;
+  country: string;
 }
 
 export interface WooOrder {
@@ -19,14 +32,14 @@ export interface WooOrder {
   date_created: string;
   currency: string;
   total: string;
+  shipping_total: string;
+  total_tax: string;
+  discount_total: string;
+  customer_note: string;
   payment_method_title: string;
   customer_id: number;
-  billing: {
-    first_name: string;
-    last_name: string;
-    email: string;
-    phone: string;
-  };
+  billing: WooAddress & { email: string; phone: string };
+  shipping: WooAddress;
   line_items: WooLineItem[];
 }
 
@@ -45,6 +58,7 @@ export interface WooProduct {
   name: string;
   sku: string;
   permalink: string;
+  type: "simple" | "variable" | "grouped" | "external";
   price: string;
   regular_price: string;
   sale_price: string;
@@ -53,6 +67,24 @@ export interface WooProduct {
   manage_stock: boolean;
   status: "publish" | "draft" | "pending" | "private";
   images: WooImage[];
+}
+
+export interface WooVariationAttribute {
+  id: number;
+  name: string;
+  option: string;
+}
+
+export interface WooVariation {
+  id: number;
+  sku: string;
+  regular_price: string;
+  sale_price: string;
+  stock_quantity: number | null;
+  stock_status: "instock" | "outofstock" | "onbackorder";
+  manage_stock: boolean;
+  attributes: WooVariationAttribute[];
+  image: WooImage | null;
 }
 
 export interface WooCustomer {
