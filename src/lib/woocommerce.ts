@@ -66,6 +66,12 @@ async function parseErrorMessage(res: Response): Promise<string> {
   return `${res.status} ${res.statusText}`;
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+const MAX_RATE_LIMIT_RETRIES = 5;
+
 async function request<T>(
   settings: WooSettings,
   path: string,
@@ -77,29 +83,38 @@ async function request<T>(
   const { method = "GET", params, body, namespace } = options;
   const url = buildUrl(settings, path, params, namespace);
 
-  let res: Response;
-  try {
-    res = await fetch(url, {
-      method,
-      headers: {
-        Authorization: authHeader(settings),
-        "Content-Type": "application/json",
-      },
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-    });
-  } catch {
-    throw new WooCommerceApiError(
-      "Kunde inte nå butiken. Kontrollera webbadressen och din internetanslutning.",
-      0
-    );
-  }
+  for (let attempt = 0; ; attempt++) {
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        method,
+        headers: {
+          Authorization: authHeader(settings),
+          "Content-Type": "application/json",
+        },
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+      });
+    } catch {
+      throw new WooCommerceApiError(
+        "Kunde inte nå butiken. Kontrollera webbadressen och din internetanslutning.",
+        0
+      );
+    }
 
-  if (!res.ok) {
-    throw new WooCommerceApiError(await parseErrorMessage(res), res.status);
-  }
+    if (res.status === 429 && attempt < MAX_RATE_LIMIT_RETRIES) {
+      const retryAfter = Number(res.headers.get("retry-after"));
+      const delay = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 1000 * 2 ** attempt;
+      await sleep(delay);
+      continue;
+    }
 
-  const data = (await res.json()) as T;
-  return { data, headers: res.headers };
+    if (!res.ok) {
+      throw new WooCommerceApiError(await parseErrorMessage(res), res.status);
+    }
+
+    const data = (await res.json()) as T;
+    return { data, headers: res.headers };
+  }
 }
 
 async function requestList<T>(
@@ -415,7 +430,7 @@ export async function getMonthlyReport(
   const before = new Date(year, month, 1).toISOString();
 
   const orders = await getAllOrdersInRange(settings, after, before, ["completed", "processing"]);
-  const refundTotals = await mapWithConcurrency(orders, 10, (order) =>
+  const refundTotals = await mapWithConcurrency(orders, 3, (order) =>
     getOrderRefundTotal(settings, order.id)
   );
 
