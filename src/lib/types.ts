@@ -43,6 +43,7 @@ export interface WooOrder {
   line_items: WooLineItem[];
   shipping_lines: { id: number; method_title: string }[];
   refunds: { id: number; total: string }[];
+  meta_data: { id: number; key: string; value: unknown }[];
 }
 
 export type WooOrderStatus =

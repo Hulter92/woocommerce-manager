@@ -336,9 +336,16 @@ export async function getRecentOrders(settings: WooSettings, count = 5): Promise
 
 // Monthly (bookkeeping) report
 //
-// Splits net sales (excl. VAT) by pickup location — read from each order's
-// shipping method title, since this store uses one "local pickup" shipping
-// method per physical shop rather than a dedicated location field.
+// Splits net sales (excl. VAT) by pickup location — read from the order's
+// "pickup_store" meta field (set by the store's pickup-scheduling plugin),
+// not a dedicated core WooCommerce field.
+
+function getOrderMeta(order: WooOrder, key: string): string | undefined {
+  const entry = order.meta_data.find((m) => m.key === key);
+  if (entry === undefined || entry.value === null || entry.value === undefined) return undefined;
+  const value = String(entry.value).trim();
+  return value === "" ? undefined : value;
+}
 
 async function getAllOrdersInRange(
   settings: WooSettings,
@@ -387,7 +394,8 @@ export async function getMonthlyReport(
     bankTotal += total;
     vatTotal += tax;
 
-    const location = order.shipping_lines[0]?.method_title || "Okänd";
+    const location =
+      getOrderMeta(order, "pickup_store") ?? getOrderMeta(order, "pickup_store_id") ?? "Okänd";
     locationTotals.set(location, (locationTotals.get(location) ?? 0) + (total - tax));
 
     for (const refund of order.refunds) {

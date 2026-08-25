@@ -33,7 +33,7 @@ Producerar en signerbar `.exe`/NSIS-installer i `src-tauri/target/release/bundle
 
 ## Månadsrapport (Rapporter-sidan)
 
-Delar upp nettoförsäljning (exkl. moms) per butik/hämtställe för bokföring. Butiken avgörs av **ordernns leveransmetod** (`shipping_lines[0].method_title`) — detta antar att varje fysisk butik har en egen namngiven "hämta i butik"-leveransmetod i WooCommerce (t.ex. "Linds Ryd"). Om leveransmetodernas namn någonsin ändras i WooCommerce-adminen ändras även namnen i rapporten automatiskt. Ordrar utan leveransmetod hamnar under "Okänd". Bygger på `getMonthlyReport` i `src/lib/woocommerce.ts` — räknar med ordrar i status Slutförd + Behandlas, och antar 6 % som enda momssats.
+Delar upp nettoförsäljning (exkl. moms) per butik/hämtställe för bokföring. Butiken avgörs av order-metadatafältet **`pickup_store`** (satt av butikens hämtningsplugin), med `pickup_store_id` som fallback. Ordrar utan något av fälten hamnar under "Okänd". Bygger på `getMonthlyReport` i `src/lib/woocommerce.ts` — räknar med ordrar i status Slutförd + Behandlas, och antar 6 % som enda momssats.
 
 ## Verktygskedja (Windows/Rust)
 
