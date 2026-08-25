@@ -7,7 +7,7 @@ import type {
   WooOrdersTotals,
   WooProduct,
   WooReportPeriod,
-  WooSalesReport,
+  WooRevenueStats,
   WooTopSeller,
 } from "./types";
 
@@ -33,9 +33,14 @@ function authHeader(settings: WooSettings): string {
   return `Basic ${token}`;
 }
 
-function buildUrl(settings: WooSettings, path: string, params?: QueryParams): string {
+function buildUrl(
+  settings: WooSettings,
+  path: string,
+  params?: QueryParams,
+  namespace = "wc/v3"
+): string {
   const base = normalizeStoreUrl(settings.storeUrl);
-  const url = new URL(`${base}/wp-json/wc/v3${path}`);
+  const url = new URL(`${base}/wp-json/${namespace}${path}`);
   if (params) {
     for (const [key, value] of Object.entries(params)) {
       if (value !== undefined) url.searchParams.set(key, String(value));
@@ -57,13 +62,13 @@ async function parseErrorMessage(res: Response): Promise<string> {
 async function request<T>(
   settings: WooSettings,
   path: string,
-  options: { method?: string; params?: QueryParams; body?: unknown } = {}
+  options: { method?: string; params?: QueryParams; body?: unknown; namespace?: string } = {}
 ): Promise<{ data: T; headers: Headers }> {
   if (!settings.storeUrl || !settings.consumerKey || !settings.consumerSecret) {
     throw new WooCommerceApiError("Butiken är inte konfigurerad än.", 0);
   }
-  const { method = "GET", params, body } = options;
-  const url = buildUrl(settings, path, params);
+  const { method = "GET", params, body, namespace } = options;
+  const url = buildUrl(settings, path, params, namespace);
 
   let res: Response;
   try {
@@ -189,36 +194,97 @@ export function listCustomers(settings: WooSettings, options: ListCustomersOptio
 }
 
 // Reports / dashboard
+//
+// These use the newer "wc-analytics" REST API (WooCommerce Admin/Analytics,
+// bundled since WooCommerce 4.0) instead of the legacy wc/v3 "reports"
+// endpoints. It accepts arbitrary before/after date ranges (so "today" is
+// possible, unlike the legacy endpoints' fixed week/month/year presets) and
+// returns richer per-product data.
 
-export async function getSalesReport(
-  settings: WooSettings,
-  period: WooReportPeriod = "week"
-): Promise<WooSalesReport> {
-  const { data } = await request<WooSalesReport[]>(settings, "/reports/sales", {
-    params: { period },
-  });
-  return (
-    data[0] ?? {
-      total_sales: "0",
-      net_sales: "0",
-      total_orders: 0,
-      total_items: 0,
-    }
-  );
+function startOfDay(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
 }
 
-export async function getOrdersTotals(settings: WooSettings): Promise<WooOrdersTotals[]> {
-  const { data } = await request<WooOrdersTotals[]>(settings, "/reports/orders/totals");
-  return data;
+function startOfWeek(date: Date): Date {
+  const day = date.getDay();
+  const diffToMonday = day === 0 ? -6 : 1 - day;
+  const monday = new Date(date);
+  monday.setDate(date.getDate() + diffToMonday);
+  return startOfDay(monday);
+}
+
+function startOfMonth(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+function startOfYear(date: Date): Date {
+  return new Date(date.getFullYear(), 0, 1);
+}
+
+export function getPeriodRange(period: WooReportPeriod): { after: string; before: string } {
+  const now = new Date();
+  switch (period) {
+    case "today":
+      return { after: startOfDay(now).toISOString(), before: now.toISOString() };
+    case "week":
+      return { after: startOfWeek(now).toISOString(), before: now.toISOString() };
+    case "month":
+      return { after: startOfMonth(now).toISOString(), before: now.toISOString() };
+    case "last_month": {
+      const lastMonthEnd = new Date(startOfMonth(now).getTime() - 1);
+      return { after: startOfMonth(lastMonthEnd).toISOString(), before: lastMonthEnd.toISOString() };
+    }
+    case "year":
+      return { after: startOfYear(now).toISOString(), before: now.toISOString() };
+  }
+}
+
+export async function getRevenueStats(
+  settings: WooSettings,
+  period: WooReportPeriod = "week"
+): Promise<WooRevenueStats> {
+  const { after, before } = getPeriodRange(period);
+  const { data } = await request<{ totals: WooRevenueStats }>(settings, "/reports/revenue/stats", {
+    params: { after, before, interval: "day" },
+    namespace: "wc-analytics",
+  });
+  return data.totals;
+}
+
+interface WooAnalyticsProductRow {
+  product_id: number;
+  items_sold: number;
+  net_revenue: number;
+  extended_info: { name: string };
 }
 
 export async function getTopSellers(
   settings: WooSettings,
-  period: WooReportPeriod = "week"
+  period: WooReportPeriod = "week",
+  count = 8
 ): Promise<WooTopSeller[]> {
-  const { data } = await request<WooTopSeller[]>(settings, "/reports/top_sellers", {
-    params: { period },
+  const { after, before } = getPeriodRange(period);
+  const { data } = await request<WooAnalyticsProductRow[]>(settings, "/reports/products", {
+    params: {
+      after,
+      before,
+      orderby: "items_sold",
+      order: "desc",
+      per_page: count,
+      extended_info: true,
+    },
+    namespace: "wc-analytics",
   });
+  return data.map((row) => ({
+    product_id: row.product_id,
+    name: row.extended_info.name,
+    quantity: row.items_sold,
+    netRevenue: row.net_revenue,
+  }));
+}
+
+export async function getOrdersTotals(settings: WooSettings): Promise<WooOrdersTotals[]> {
+  const { data } = await request<WooOrdersTotals[]>(settings, "/reports/orders/totals");
   return data;
 }
 

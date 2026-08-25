@@ -74,18 +74,25 @@ export interface WooOrdersTotals {
   total: number;
 }
 
-export interface WooSalesReport {
-  total_sales: string;
-  net_sales: string;
-  total_orders: number;
-  total_items: number;
-  total_customers?: number;
+export interface WooRevenueStats {
+  total_sales: number;
+  net_revenue: number;
+  gross_sales: number;
+  orders_count: number;
+  num_items_sold: number;
+  coupons: number;
+  coupons_count: number;
+  refunds: number;
+  shipping: number;
+  taxes: number;
+  products: number;
 }
 
 export interface WooTopSeller {
   product_id: number;
   name: string;
   quantity: number;
+  netRevenue: number;
 }
 
-export type WooReportPeriod = "week" | "month" | "last_month" | "year";
+export type WooReportPeriod = "today" | "week" | "month" | "last_month" | "year";

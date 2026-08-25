@@ -13,14 +13,14 @@ import {
   getCustomersTotal,
   getOrdersTotals,
   getRecentOrders,
-  getSalesReport,
+  getRevenueStats,
   getTopSellers,
   WooCommerceApiError,
 } from "@/lib/woocommerce";
 import type { WooOrder, WooOrdersTotals, WooReportPeriod, WooTopSeller } from "@/lib/types";
 
 interface DashboardData {
-  totalSales: string;
+  totalSales: number;
   currency: string;
   totalOrders: number;
   averageOrderValue: number;
@@ -31,6 +31,7 @@ interface DashboardData {
 }
 
 const PERIOD_OPTIONS: { value: WooReportPeriod; label: string }[] = [
+  { value: "today", label: "Idag" },
   { value: "week", label: "Denna vecka" },
   { value: "month", label: "Denna månad" },
   { value: "last_month", label: "Föregående månad" },
@@ -59,7 +60,7 @@ export default function DashboardPage() {
     startTransition(async () => {
       try {
         const [sales, statusTotals, recentOrders, topSellers, customersTotal] = await Promise.all([
-          getSalesReport(settings, period),
+          getRevenueStats(settings, period),
           getOrdersTotals(settings),
           getRecentOrders(settings, 5),
           getTopSellers(settings, period),
@@ -70,8 +71,8 @@ export default function DashboardPage() {
         setData({
           totalSales: sales.total_sales,
           currency,
-          totalOrders: sales.total_orders,
-          averageOrderValue: sales.total_orders > 0 ? Number(sales.total_sales) / sales.total_orders : 0,
+          totalOrders: sales.orders_count,
+          averageOrderValue: sales.orders_count > 0 ? sales.total_sales / sales.orders_count : 0,
           customersTotal,
           statusTotals,
           topSellers,
@@ -159,7 +160,7 @@ export default function DashboardPage() {
                 </CardHeader>
                 <CardContent>
                   {data.topSellers.length > 0 ? (
-                    <TopSellersList items={data.topSellers} />
+                    <TopSellersList items={data.topSellers} currency={data.currency} />
                   ) : (
                     <p className="text-sm text-muted text-center py-6">
                       Inga sålda produkter under perioden.
@@ -211,7 +212,7 @@ export default function DashboardPage() {
   );
 }
 
-function TopSellersList({ items }: { items: WooTopSeller[] }) {
+function TopSellersList({ items, currency }: { items: WooTopSeller[]; currency: string }) {
   const top = items.slice(0, 8);
   const max = Math.max(...top.map((i) => i.quantity), 1);
   return (
@@ -230,9 +231,12 @@ function TopSellersList({ items }: { items: WooTopSeller[] }) {
               />
             </div>
           </div>
-          <span className="w-12 shrink-0 text-right text-sm tabular-nums text-muted">
-            {item.quantity} st
-          </span>
+          <div className="w-20 shrink-0 text-right">
+            <p className="text-sm tabular-nums">{item.quantity} st</p>
+            <p className="text-xs tabular-nums text-muted">
+              {formatMoney(item.netRevenue, currency)}
+            </p>
+          </div>
         </li>
       ))}
     </ol>
