@@ -152,6 +152,13 @@ export async function updateOrderStatus(
   return data;
 }
 
+export async function trashOrder(settings: WooSettings, orderId: number): Promise<void> {
+  await request(settings, `/orders/${orderId}`, {
+    method: "DELETE",
+    params: { force: false },
+  });
+}
+
 export async function getOrder(settings: WooSettings, orderId: number): Promise<WooOrder> {
   const { data } = await request<WooOrder>(settings, `/orders/${orderId}`);
   return data;

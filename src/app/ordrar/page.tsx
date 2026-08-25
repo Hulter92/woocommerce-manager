@@ -2,15 +2,16 @@
 
 import { Suspense, useEffect, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { Trash2 } from "lucide-react";
 import { useSettings } from "@/components/settings-provider";
 import { ConnectionGate } from "@/components/connection-gate";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input, Select } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { LoadingBlock } from "@/components/ui/spinner";
+import { LoadingBlock, Spinner } from "@/components/ui/spinner";
 import { ORDER_STATUS_OPTIONS, OrderStatusBadge } from "@/components/status-badge";
 import { OrderDetailDialog } from "@/components/order-detail-dialog";
-import { listOrders, updateOrderStatus, WooCommerceApiError } from "@/lib/woocommerce";
+import { listOrders, trashOrder, updateOrderStatus, WooCommerceApiError } from "@/lib/woocommerce";
 import type { WooOrder, WooOrderStatus } from "@/lib/types";
 
 function formatMoney(value: string, currency: string) {
@@ -48,6 +49,7 @@ function OrdrarPageInner() {
   const [search, setSearch] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<number | null>(null);
+  const [trashingId, setTrashingId] = useState<number | null>(null);
   const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
   const [loading, startTransition] = useTransition();
 
@@ -80,6 +82,19 @@ function OrdrarPageInner() {
       setError(err instanceof WooCommerceApiError ? err.message : "Kunde inte uppdatera order.");
     } finally {
       setUpdatingId(null);
+    }
+  }
+
+  async function handleTrash(order: WooOrder) {
+    if (!window.confirm(`Flytta order #${order.number} till papperskorgen?`)) return;
+    setTrashingId(order.id);
+    try {
+      await trashOrder(settings, order.id);
+      setOrders((prev) => prev.filter((o) => o.id !== order.id));
+    } catch (err) {
+      setError(err instanceof WooCommerceApiError ? err.message : "Kunde inte flytta ordern till papperskorgen.");
+    } finally {
+      setTrashingId(null);
     }
   }
 
@@ -141,6 +156,7 @@ function OrdrarPageInner() {
                     <th className="px-4 py-3 font-medium">Datum</th>
                     <th className="px-4 py-3 font-medium">Status</th>
                     <th className="px-4 py-3 font-medium text-right">Summa</th>
+                    <th className="px-4 py-3 font-medium" />
                   </tr>
                 </thead>
                 <tbody>
@@ -180,11 +196,22 @@ function OrdrarPageInner() {
                       <td className="px-4 py-3 text-right">
                         {formatMoney(order.total, order.currency)}
                       </td>
+                      <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          onClick={() => handleTrash(order)}
+                          disabled={trashingId === order.id}
+                          className="text-muted hover:text-danger disabled:opacity-50"
+                          aria-label="Flytta till papperskorgen"
+                          title="Flytta till papperskorgen"
+                        >
+                          {trashingId === order.id ? <Spinner /> : <Trash2 size={16} />}
+                        </button>
+                      </td>
                     </tr>
                   ))}
                   {orders.length === 0 && (
                     <tr>
-                      <td className="px-4 py-6 text-center text-muted" colSpan={5}>
+                      <td className="px-4 py-6 text-center text-muted" colSpan={6}>
                         Inga ordrar hittades.
                       </td>
                     </tr>

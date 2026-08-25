@@ -12,9 +12,14 @@ const STATUS_MAP: Record<WooOrderStatus, { label: string; tone: "neutral" | "suc
   trash: { label: "Papperskorg", tone: "neutral" },
 };
 
+// "trash" is intentionally excluded: WooCommerce doesn't allow setting an
+// order's status to trash via update — moving to trash is a separate delete
+// action (see trashOrder in lib/woocommerce.ts), not a status change.
 export const ORDER_STATUS_OPTIONS: { value: WooOrderStatus; label: string }[] = (
   Object.keys(STATUS_MAP) as WooOrderStatus[]
-).map((value) => ({ value, label: STATUS_MAP[value].label }));
+)
+  .filter((value) => value !== "trash")
+  .map((value) => ({ value, label: STATUS_MAP[value].label }));
 
 export function OrderStatusBadge({ status }: { status: WooOrderStatus }) {
   const entry = STATUS_MAP[status] ?? { label: status, tone: "neutral" as const };
