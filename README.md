@@ -35,6 +35,8 @@ Producerar en signerbar `.exe`/NSIS-installer i `src-tauri/target/release/bundle
 
 Delar upp nettoförsäljning (exkl. moms) per butik/hämtställe för bokföring. Butiken avgörs av order-metadatafältet **`pickup_store`** (satt av butikens hämtningsplugin), med `pickup_store_id` som fallback. Ordrar utan något av fälten hamnar under "Okänd". Bygger på `getMonthlyReport` i `src/lib/woocommerce.ts` — räknar med ordrar i status Slutförd + Behandlas, och antar 6 % som enda momssats.
 
+Återbetalningssumman hämtas från `wc-analytics/reports/revenue/stats` (samma anrop som Översikt använder) istället för att fråga varje enskild order om dess återbetalningar (`/orders/{id}/refunds`) — det senare krävde en förfrågan per order och fick butiker med många ordrar per månad att bli rate-limitade (429). Den lilla avvikelsen det kan innebära (wc-analytics egen definition av vilka orderstatusar som räknas) väger lätt mot att rapporten faktiskt går att generera.
+
 ## Verktygskedja (Windows/Rust)
 
 Den här datorn har två Visual Studio-installationer. Den nyare (VS 2026 "18") saknar delar av C++ Desktop-komponenterna, vilket får `cargo build` att misslyckas med länkfel (`msvcrt.lib`/`excpt.h` saknas). `.cargo/config.toml` i projektroten pinnar därför bygget till den fullständiga VS 2022-installationen. Filen är **inte** incheckad i git (den pekar på sökvägar som bara finns på den här datorn) — GitHub Actions-runnern har en fungerande toolchain och behöver den inte. Om VS 2022 någonsin avinstalleras eller uppdateras till en ny MSVC-version behöver filen regenereras lokalt (kör `vcvarsall.bat x64` och dumpa miljövariablerna på nytt) — eller åtgärda VS 2026-installationen via Visual Studio Installer och ta bort filen.

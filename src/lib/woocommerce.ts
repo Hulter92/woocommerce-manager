@@ -297,16 +297,24 @@ export function getPeriodRange(period: WooReportPeriod): { after: string; before
   }
 }
 
-export async function getRevenueStats(
+async function getRevenueStatsForRange(
   settings: WooSettings,
-  period: WooReportPeriod = "week"
+  after: string,
+  before: string
 ): Promise<WooRevenueStats> {
-  const { after, before } = getPeriodRange(period);
   const { data } = await request<{ totals: WooRevenueStats }>(settings, "/reports/revenue/stats", {
     params: { after, before, interval: "day" },
     namespace: "wc-analytics",
   });
   return data.totals;
+}
+
+export async function getRevenueStats(
+  settings: WooSettings,
+  period: WooReportPeriod = "week"
+): Promise<WooRevenueStats> {
+  const { after, before } = getPeriodRange(period);
+  return getRevenueStatsForRange(settings, after, before);
 }
 
 interface WooAnalyticsProductRow {
@@ -369,32 +377,6 @@ function getOrderMeta(order: WooOrder, key: string): string | undefined {
   return value === "" ? undefined : value;
 }
 
-// Refunds aren't embedded in the order object — WooCommerce exposes them
-// only via this sub-resource. "amount" is a positive magnitude, so it must
-// be subtracted (not added) to get a bookkeeping-style negative total.
-async function getOrderRefundTotal(settings: WooSettings, orderId: number): Promise<number> {
-  const { data } = await request<{ amount: string }[]>(settings, `/orders/${orderId}/refunds`);
-  return data.reduce((sum, refund) => sum + Number(refund.amount), 0);
-}
-
-async function mapWithConcurrency<T, R>(
-  items: T[],
-  limit: number,
-  fn: (item: T) => Promise<R>
-): Promise<R[]> {
-  const results: R[] = new Array(items.length);
-  let next = 0;
-  async function worker() {
-    for (;;) {
-      const index = next++;
-      if (index >= items.length) return;
-      results[index] = await fn(items[index]);
-    }
-  }
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
-  return results;
-}
-
 async function getAllOrdersInRange(
   settings: WooSettings,
   after: string,
@@ -429,17 +411,16 @@ export async function getMonthlyReport(
   const after = new Date(year, month - 1, 1).toISOString();
   const before = new Date(year, month, 1).toISOString();
 
-  const orders = await getAllOrdersInRange(settings, after, before, ["completed", "processing"]);
-  const refundTotals = await mapWithConcurrency(orders, 3, (order) =>
-    getOrderRefundTotal(settings, order.id)
-  );
+  const [orders, revenueStats] = await Promise.all([
+    getAllOrdersInRange(settings, after, before, ["completed", "processing"]),
+    getRevenueStatsForRange(settings, after, before),
+  ]);
 
   let bankTotal = 0;
   let vatTotal = 0;
-  let refundsTotal = 0;
   const locationTotals = new Map<string, number>();
 
-  orders.forEach((order, index) => {
+  for (const order of orders) {
     const total = Number(order.total);
     const tax = Number(order.total_tax);
     bankTotal += total;
@@ -448,9 +429,13 @@ export async function getMonthlyReport(
     const location =
       getOrderMeta(order, "pickup_store") ?? getOrderMeta(order, "pickup_store_id") ?? "Okänd";
     locationTotals.set(location, (locationTotals.get(location) ?? 0) + (total - tax));
+  }
 
-    refundsTotal -= refundTotals[index];
-  });
+  // "refunds" from the analytics totals is a positive magnitude — negate it
+  // for a bookkeeping-style negative line. Pulled from wc-analytics rather
+  // than the /orders/{id}/refunds sub-resource because fetching that per
+  // order (100+ requests for a typical month) was tripping rate limits.
+  const refundsTotal = -revenueStats.refunds;
 
   const locations = Array.from(locationTotals, ([name, netSales]) => ({ name, netSales })).sort(
     (a, b) => b.netSales - a.netSales
