@@ -308,50 +308,72 @@ async function getRevenueStatsForRange(
   return data.totals;
 }
 
-export async function getRevenueStats(
-  settings: WooSettings,
-  period: WooReportPeriod = "week"
-): Promise<WooRevenueStats> {
-  const { after, before } = getPeriodRange(period);
-  return getRevenueStatsForRange(settings, after, before);
-}
-
-interface WooAnalyticsProductRow {
-  product_id: number;
-  items_sold: number;
-  net_revenue: number;
-  extended_info: { name: string };
-}
-
-export async function getTopSellers(
-  settings: WooSettings,
-  period: WooReportPeriod = "week",
-  count = 8
-): Promise<WooTopSeller[]> {
-  const { after, before } = getPeriodRange(period);
-  const { data } = await request<WooAnalyticsProductRow[]>(settings, "/reports/products", {
-    params: {
-      after,
-      before,
-      orderby: "items_sold",
-      order: "desc",
-      per_page: count,
-      extended_info: true,
-    },
-    namespace: "wc-analytics",
-  });
-  return data.map((row) => ({
-    product_id: row.product_id,
-    name: row.extended_info.name,
-    quantity: row.items_sold,
-    netRevenue: row.net_revenue,
-  }));
-}
-
-
 export async function getRecentOrders(settings: WooSettings, count = 5): Promise<WooOrder[]> {
   const { items } = await listOrders(settings, { perPage: count });
   return items;
+}
+
+// Dashboard stats — computed directly from live orders (wc/v3) rather than
+// wc-analytics. wc-analytics' report tables are populated by a background
+// sync and lag behind real orders, so "Idag"/very recent periods came back
+// empty even with real orders present. Orders are always current.
+
+export interface WooDashboardRevenue {
+  totalSales: number;
+  netRevenue: number;
+  grossSales: number;
+  taxes: number;
+  ordersCount: number;
+}
+
+function summarizeRevenue(orders: WooOrder[]): WooDashboardRevenue {
+  let totalSales = 0;
+  let taxes = 0;
+  let discountTotal = 0;
+  for (const order of orders) {
+    totalSales += Number(order.total);
+    taxes += Number(order.total_tax);
+    discountTotal += Number(order.discount_total);
+  }
+  return {
+    totalSales,
+    netRevenue: totalSales - taxes,
+    grossSales: totalSales + discountTotal,
+    taxes,
+    ordersCount: orders.length,
+  };
+}
+
+function summarizeTopSellers(orders: WooOrder[], count: number): WooTopSeller[] {
+  const byProduct = new Map<number, WooTopSeller>();
+  for (const order of orders) {
+    for (const item of order.line_items) {
+      const entry = byProduct.get(item.product_id) ?? {
+        product_id: item.product_id,
+        name: item.name,
+        quantity: 0,
+        netRevenue: 0,
+      };
+      entry.quantity += item.quantity;
+      entry.netRevenue += Number(item.total);
+      byProduct.set(item.product_id, entry);
+    }
+  }
+  return Array.from(byProduct.values())
+    .sort((a, b) => b.quantity - a.quantity)
+    .slice(0, count);
+}
+
+export async function getDashboardStats(
+  settings: WooSettings,
+  period: WooReportPeriod
+): Promise<{ revenue: WooDashboardRevenue; topSellers: WooTopSeller[] }> {
+  const { after, before } = getPeriodRange(period);
+  const orders = await getAllOrdersInRange(settings, after, before, ["completed", "processing"]);
+  return {
+    revenue: summarizeRevenue(orders),
+    topSellers: summarizeTopSellers(orders, 8),
+  };
 }
 
 // Monthly (bookkeeping) report

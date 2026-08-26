@@ -29,7 +29,7 @@ Producerar en signerbar `.exe`/NSIS-installer i `src-tauri/target/release/bundle
 ## API:er som används
 
 - `wc/v3` (standard WooCommerce REST API) för allt som listar/skapar/ändrar — ordrar, produkter, kunder.
-- `wc-analytics` (WooCommerce Admin/Analytics-API:et, inbyggt sedan WooCommerce 4.0) för Översikt-sidans statistik (`src/lib/woocommerce.ts`, funktionerna `getRevenueStats`/`getTopSellers`). Det stödjer valfria datumintervall (`before`/`after`), vilket den äldre `wc/v3/reports`-varianten inte gör — därför kan periodväljaren erbjuda "Idag" utan problem. Kräver att WooCommerce Admin är aktivt (är det som standard i alla moderna installationer).
+- `wc-analytics` (WooCommerce Admin/Analytics-API:et, inbyggt sedan WooCommerce 4.0) används bara för återbetalningssumman i månadsrapporten (se nedan) — inte för Översikt. Dess rapporttabeller fylls via en bakgrundssynk och låg efter för nya ordrar, så Översikts siffror för "Idag"/pågående perioder kunde visa noll trots riktiga ordrar. Översikt (`getDashboardStats` i `src/lib/woocommerce.ts`) hämtar därför ordrarna direkt via `wc/v3` och räknar ut försäljning/bästsäljare själv, precis som månadsrapporten.
 
 ## Månadsrapport (Rapporter-sidan)
 

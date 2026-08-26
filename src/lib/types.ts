@@ -6,6 +6,7 @@ export interface WooImage {
 
 export interface WooLineItem {
   id: number;
+  product_id: number;
   name: string;
   quantity: number;
   price: number;

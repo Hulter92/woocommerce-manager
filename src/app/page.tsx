@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Select } from "@/components/ui/input";
 import { LoadingBlock } from "@/components/ui/spinner";
 import { OrderStatusBadge } from "@/components/status-badge";
-import { getRecentOrders, getRevenueStats, getTopSellers, WooCommerceApiError } from "@/lib/woocommerce";
+import { getDashboardStats, getRecentOrders, WooCommerceApiError } from "@/lib/woocommerce";
 import type { WooOrder, WooReportPeriod, WooTopSeller } from "@/lib/types";
 
 interface DashboardData {
@@ -53,21 +53,20 @@ export default function DashboardPage() {
     let cancelled = false;
     startTransition(async () => {
       try {
-        const [sales, recentOrders, topSellers] = await Promise.all([
-          getRevenueStats(settings, period),
+        const [{ revenue, topSellers }, recentOrders] = await Promise.all([
+          getDashboardStats(settings, period),
           getRecentOrders(settings, 5),
-          getTopSellers(settings, period),
         ]);
         if (cancelled) return;
         const currency = recentOrders[0]?.currency ?? "SEK";
         setData({
-          totalSales: sales.total_sales,
-          netRevenue: sales.net_revenue,
-          grossSales: sales.gross_sales,
-          taxes: sales.taxes,
+          totalSales: revenue.totalSales,
+          netRevenue: revenue.netRevenue,
+          grossSales: revenue.grossSales,
+          taxes: revenue.taxes,
           currency,
-          totalOrders: sales.orders_count,
-          averageOrderValue: sales.orders_count > 0 ? sales.total_sales / sales.orders_count : 0,
+          totalOrders: revenue.ordersCount,
+          averageOrderValue: revenue.ordersCount > 0 ? revenue.totalSales / revenue.ordersCount : 0,
           topSellers,
           recentOrders,
         });
