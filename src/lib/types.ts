@@ -71,6 +71,13 @@ export interface WooProduct {
   images: WooImage[];
 }
 
+export interface WooCategory {
+  id: number;
+  name: string;
+  slug: string;
+  count: number;
+}
+
 export interface WooVariationAttribute {
   id: number;
   name: string;

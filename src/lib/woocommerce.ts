@@ -1,6 +1,7 @@
 import { fetch } from "@tauri-apps/plugin-http";
 import { normalizeStoreUrl, type WooSettings } from "./settings";
 import type {
+  WooCategory,
   WooCustomer,
   WooMonthlyReport,
   WooOrder,
@@ -185,16 +186,25 @@ export interface ListProductsOptions {
   perPage?: number;
   search?: string;
   stockStatus?: "instock" | "outofstock" | "onbackorder";
+  categoryId?: number;
 }
 
 export function listProducts(settings: WooSettings, options: ListProductsOptions = {}) {
-  const { page = 1, perPage = 20, search, stockStatus } = options;
+  const { page = 1, perPage = 20, search, stockStatus, categoryId } = options;
   return requestList<WooProduct>(settings, "/products", {
     page,
     per_page: perPage,
     search: search || undefined,
     stock_status: stockStatus,
+    category: categoryId,
   });
+}
+
+export async function listCategories(settings: WooSettings): Promise<WooCategory[]> {
+  const { data } = await request<WooCategory[]>(settings, "/products/categories", {
+    params: { per_page: 100, orderby: "name", order: "asc", hide_empty: true },
+  });
+  return data;
 }
 
 export async function updateProduct(

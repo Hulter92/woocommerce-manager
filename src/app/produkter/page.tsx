@@ -11,13 +11,14 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { LoadingBlock, Spinner } from "@/components/ui/spinner";
 import {
+  listCategories,
   listProducts,
   listVariations,
   updateProduct,
   updateVariation,
   WooCommerceApiError,
 } from "@/lib/woocommerce";
-import type { WooProduct, WooVariation } from "@/lib/types";
+import type { WooCategory, WooProduct, WooVariation } from "@/lib/types";
 
 const STOCK_LABEL: Record<WooProduct["stock_status"], { label: string; tone: "success" | "danger" | "warning" }> = {
   instock: { label: "I lager", tone: "success" },
@@ -46,6 +47,8 @@ export default function ProdukterPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [search, setSearch] = useState("");
   const [stockStatus, setStockStatus] = useState<"" | WooProduct["stock_status"]>("");
+  const [categoryId, setCategoryId] = useState<"" | number>("");
+  const [categories, setCategories] = useState<WooCategory[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [edits, setEdits] = useState<Record<number, EditState>>({});
   const [savingId, setSavingId] = useState<number | null>(null);
@@ -60,9 +63,29 @@ export default function ProdukterPage() {
   useEffect(() => {
     if (!configured) return;
     let cancelled = false;
+    listCategories(settings)
+      .then((cats) => {
+        if (!cancelled) setCategories(cats);
+      })
+      .catch(() => {
+        // Non-critical — the category filter just won't have options.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [configured, settings]);
+
+  useEffect(() => {
+    if (!configured) return;
+    let cancelled = false;
     startTransition(async () => {
       try {
-        const res = await listProducts(settings, { page, search, stockStatus: stockStatus || undefined });
+        const res = await listProducts(settings, {
+          page,
+          search,
+          stockStatus: stockStatus || undefined,
+          categoryId: categoryId || undefined,
+        });
         if (cancelled) return;
         setProducts(res.items);
         setTotalPages(Math.max(1, res.totalPages));
@@ -76,7 +99,7 @@ export default function ProdukterPage() {
     return () => {
       cancelled = true;
     };
-  }, [configured, settings, page, search, stockStatus]);
+  }, [configured, settings, page, search, stockStatus, categoryId]);
 
   function isDirty(edit: EditState | undefined, item: Pick<WooProduct | WooVariation, "regular_price" | "stock_quantity">) {
     if (!edit) return false;
@@ -181,6 +204,21 @@ export default function ProdukterPage() {
             <option value="instock">I lager</option>
             <option value="outofstock">Slut i lager</option>
             <option value="onbackorder">Restnoterad</option>
+          </Select>
+          <Select
+            value={categoryId}
+            onChange={(e) => {
+              setPage(1);
+              setCategoryId(e.target.value ? Number(e.target.value) : "");
+            }}
+            className="max-w-[200px]"
+          >
+            <option value="">Alla kategorier</option>
+            {categories.map((cat) => (
+              <option key={cat.id} value={cat.id}>
+                {cat.name} ({cat.count})
+              </option>
+            ))}
           </Select>
         </div>
 
