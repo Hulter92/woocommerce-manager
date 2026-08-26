@@ -5,7 +5,6 @@ import type {
   WooMonthlyReport,
   WooOrder,
   WooOrderStatus,
-  WooOrdersTotals,
   WooProduct,
   WooReportPeriod,
   WooRevenueStats,
@@ -349,15 +348,6 @@ export async function getTopSellers(
   }));
 }
 
-export async function getOrdersTotals(settings: WooSettings): Promise<WooOrdersTotals[]> {
-  const { data } = await request<WooOrdersTotals[]>(settings, "/reports/orders/totals");
-  return data;
-}
-
-export async function getCustomersTotal(settings: WooSettings): Promise<number> {
-  const { data } = await request<WooOrdersTotals[]>(settings, "/reports/customers/totals");
-  return data.reduce((sum, entry) => sum + entry.total, 0);
-}
 
 export async function getRecentOrders(settings: WooSettings, count = 5): Promise<WooOrder[]> {
   const { items } = await listOrders(settings, { perPage: count });

@@ -101,12 +101,6 @@ export interface WooCustomer {
   };
 }
 
-export interface WooOrdersTotals {
-  slug: string;
-  name: string;
-  total: number;
-}
-
 export interface WooRevenueStats {
   total_sales: number;
   net_revenue: number;

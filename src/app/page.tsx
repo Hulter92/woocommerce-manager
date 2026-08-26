@@ -2,30 +2,24 @@
 
 import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
-import { ShoppingCart, TrendingUp, Users, Wallet } from "lucide-react";
+import { Coins, Percent, Receipt, ShoppingCart, TrendingUp, Wallet } from "lucide-react";
 import { useSettings } from "@/components/settings-provider";
 import { ConnectionGate } from "@/components/connection-gate";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Select } from "@/components/ui/input";
 import { LoadingBlock } from "@/components/ui/spinner";
 import { OrderStatusBadge } from "@/components/status-badge";
-import {
-  getCustomersTotal,
-  getOrdersTotals,
-  getRecentOrders,
-  getRevenueStats,
-  getTopSellers,
-  WooCommerceApiError,
-} from "@/lib/woocommerce";
-import type { WooOrder, WooOrdersTotals, WooReportPeriod, WooTopSeller } from "@/lib/types";
+import { getRecentOrders, getRevenueStats, getTopSellers, WooCommerceApiError } from "@/lib/woocommerce";
+import type { WooOrder, WooReportPeriod, WooTopSeller } from "@/lib/types";
 
 interface DashboardData {
   totalSales: number;
+  netRevenue: number;
+  grossSales: number;
+  taxes: number;
   currency: string;
   totalOrders: number;
   averageOrderValue: number;
-  customersTotal: number;
-  statusTotals: WooOrdersTotals[];
   topSellers: WooTopSeller[];
   recentOrders: WooOrder[];
 }
@@ -59,22 +53,21 @@ export default function DashboardPage() {
     let cancelled = false;
     startTransition(async () => {
       try {
-        const [sales, statusTotals, recentOrders, topSellers, customersTotal] = await Promise.all([
+        const [sales, recentOrders, topSellers] = await Promise.all([
           getRevenueStats(settings, period),
-          getOrdersTotals(settings),
           getRecentOrders(settings, 5),
           getTopSellers(settings, period),
-          getCustomersTotal(settings),
         ]);
         if (cancelled) return;
         const currency = recentOrders[0]?.currency ?? "SEK";
         setData({
           totalSales: sales.total_sales,
+          netRevenue: sales.net_revenue,
+          grossSales: sales.gross_sales,
+          taxes: sales.taxes,
           currency,
           totalOrders: sales.orders_count,
           averageOrderValue: sales.orders_count > 0 ? sales.total_sales / sales.orders_count : 0,
-          customersTotal,
-          statusTotals,
           topSellers,
           recentOrders,
         });
@@ -115,60 +108,48 @@ export default function DashboardPage() {
 
         {data && !loading && (
           <>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
               <StatCard
                 icon={TrendingUp}
-                label="Försäljning"
+                label="Totalförsäljning"
                 value={formatMoney(data.totalSales, data.currency)}
               />
-              <StatCard icon={ShoppingCart} label="Ordrar" value={String(data.totalOrders)} />
               <StatCard
                 icon={Wallet}
+                label="Nettoförsäljning"
+                value={formatMoney(data.netRevenue, data.currency)}
+              />
+              <StatCard
+                icon={Receipt}
+                label="Bruttoförsäljning"
+                value={formatMoney(data.grossSales, data.currency)}
+              />
+              <StatCard icon={Percent} label="Total moms" value={formatMoney(data.taxes, data.currency)} />
+              <StatCard icon={ShoppingCart} label="Ordrar" value={String(data.totalOrders)} />
+              <StatCard
+                icon={Coins}
                 label="Snitt per order"
                 value={formatMoney(data.averageOrderValue, data.currency)}
               />
-              <StatCard icon={Users} label="Kunder totalt" value={String(data.customersTotal)} />
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
-              <Card>
-                <CardHeader>
-                  <p className="font-medium text-sm">Ordrar per status</p>
-                  <p className="text-xs text-muted mt-0.5">Alla tider</p>
-                </CardHeader>
-                <CardContent className="flex flex-wrap gap-2">
-                  {data.statusTotals
-                    .filter((s) => s.total > 0)
-                    .map((s) => (
-                      <div
-                        key={s.slug}
-                        className="flex items-center gap-2 rounded-md border border-border px-3 py-1.5 text-sm"
-                      >
-                        <span className="text-muted">{s.name}</span>
-                        <span className="font-medium">{s.total}</span>
-                      </div>
-                    ))}
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <p className="font-medium text-sm">Bästsäljare</p>
-                  <p className="text-xs text-muted mt-0.5">
-                    {PERIOD_OPTIONS.find((o) => o.value === period)?.label}
+            <Card>
+              <CardHeader>
+                <p className="font-medium text-sm">Bästsäljare</p>
+                <p className="text-xs text-muted mt-0.5">
+                  {PERIOD_OPTIONS.find((o) => o.value === period)?.label}
+                </p>
+              </CardHeader>
+              <CardContent>
+                {data.topSellers.length > 0 ? (
+                  <TopSellersList items={data.topSellers} currency={data.currency} />
+                ) : (
+                  <p className="text-sm text-muted text-center py-6">
+                    Inga sålda produkter under perioden.
                   </p>
-                </CardHeader>
-                <CardContent>
-                  {data.topSellers.length > 0 ? (
-                    <TopSellersList items={data.topSellers} currency={data.currency} />
-                  ) : (
-                    <p className="text-sm text-muted text-center py-6">
-                      Inga sålda produkter under perioden.
-                    </p>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
+                )}
+              </CardContent>
+            </Card>
 
             <Card>
               <CardHeader className="flex items-center justify-between">
