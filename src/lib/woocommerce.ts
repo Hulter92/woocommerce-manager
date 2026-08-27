@@ -207,10 +207,19 @@ export async function listCategories(settings: WooSettings): Promise<WooCategory
   return data;
 }
 
+export interface UpdateProductInput {
+  regular_price?: string;
+  sale_price?: string;
+  stock_quantity?: number | null;
+  name?: string;
+  categories?: { id: number }[];
+  images?: ({ id: number } | { src: string })[];
+}
+
 export async function updateProduct(
   settings: WooSettings,
   productId: number,
-  changes: Partial<Pick<WooProduct, "regular_price" | "sale_price" | "stock_quantity">>
+  changes: UpdateProductInput
 ): Promise<WooProduct> {
   const { data } = await request<WooProduct>(settings, `/products/${productId}`, {
     method: "PUT",

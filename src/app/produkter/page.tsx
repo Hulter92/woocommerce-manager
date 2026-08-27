@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useState, useTransition } from "react";
 import Image from "next/image";
-import { ChevronDown, ChevronRight, Save } from "lucide-react";
+import { ChevronDown, ChevronRight, Pencil, Save } from "lucide-react";
 import { useSettings } from "@/components/settings-provider";
 import { ConnectionGate } from "@/components/connection-gate";
 import { Card, CardContent } from "@/components/ui/card";
@@ -10,6 +10,7 @@ import { Input, Select } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { LoadingBlock, Spinner } from "@/components/ui/spinner";
+import { ProductEditDialog } from "@/components/product-edit-dialog";
 import {
   listCategories,
   listProducts,
@@ -59,6 +60,7 @@ export default function ProdukterPage() {
   const [variationEdits, setVariationEdits] = useState<Record<number, EditState>>({});
   const [loadingVariationsFor, setLoadingVariationsFor] = useState<number | null>(null);
   const [savingVariationId, setSavingVariationId] = useState<number | null>(null);
+  const [editingProduct, setEditingProduct] = useState<WooProduct | null>(null);
 
   useEffect(() => {
     if (!configured) return;
@@ -325,17 +327,27 @@ export default function ProdukterPage() {
                             <Badge tone={stockInfo.tone}>{stockInfo.label}</Badge>
                           </td>
                           <td className="px-4 py-3 text-right">
-                            {!isVariable && (
-                              <Button
-                                size="sm"
-                                variant="secondary"
-                                disabled={!dirty || savingId === product.id}
-                                onClick={() => handleSave(product)}
+                            <div className="flex items-center justify-end gap-2">
+                              {!isVariable && (
+                                <Button
+                                  size="sm"
+                                  variant="secondary"
+                                  disabled={!dirty || savingId === product.id}
+                                  onClick={() => handleSave(product)}
+                                >
+                                  {savingId === product.id ? <Spinner /> : <Save size={14} />}
+                                  Spara
+                                </Button>
+                              )}
+                              <button
+                                onClick={() => setEditingProduct(product)}
+                                className="text-muted hover:text-foreground"
+                                aria-label="Redigera produkt"
+                                title="Redigera namn, kategorier och bilder"
                               >
-                                {savingId === product.id ? <Spinner /> : <Save size={14} />}
-                                Spara
-                              </Button>
-                            )}
+                                <Pencil size={16} />
+                              </button>
+                            </div>
                           </td>
                         </tr>
 
@@ -450,6 +462,16 @@ export default function ProdukterPage() {
           </div>
         </div>
       </div>
+
+      <ProductEditDialog
+        product={editingProduct}
+        categories={categories}
+        settings={settings}
+        onClose={() => setEditingProduct(null)}
+        onSaved={(updated) => {
+          setProducts((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+        }}
+      />
     </ConnectionGate>
   );
 }

@@ -69,6 +69,7 @@ export interface WooProduct {
   manage_stock: boolean;
   status: "publish" | "draft" | "pending" | "private";
   images: WooImage[];
+  categories: { id: number; name: string; slug: string }[];
 }
 
 export interface WooCategory {

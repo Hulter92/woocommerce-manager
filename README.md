@@ -31,6 +31,10 @@ Producerar en signerbar `.exe`/NSIS-installer i `src-tauri/target/release/bundle
 - `wc/v3` (standard WooCommerce REST API) för allt som listar/skapar/ändrar — ordrar, produkter, kunder.
 - `wc-analytics` (WooCommerce Admin/Analytics-API:et, inbyggt sedan WooCommerce 4.0) används bara för återbetalningssumman i månadsrapporten (se nedan) — inte för Översikt. Dess rapporttabeller fylls via en bakgrundssynk och låg efter för nya ordrar, så Översikts siffror för "Idag"/pågående perioder kunde visa noll trots riktiga ordrar. Översikt (`getDashboardStats` i `src/lib/woocommerce.ts`) hämtar därför ordrarna direkt via `wc/v3` och räknar ut försäljning/bästsäljare själv, precis som månadsrapporten.
 
+## Produktredigering och externa integrationer
+
+`updateProduct`/`updateVariation` skickar alltid **partiella** `PUT`-anrop — bara de fält som faktiskt redigeras i appen (pris, lager, namn, kategorier, bilder) skickas med. WooCommerce ändrar då bara dessa fält och lämnar allt annat orört, inklusive anpassade fält (meta) som styrs av externa integrationer (t.ex. butikens koppling mot MyFoodOffice för ingredienser/näringsvärden).
+
 ## Månadsrapport (Rapporter-sidan)
 
 Delar upp nettoförsäljning (exkl. moms) per butik/hämtställe för bokföring. Butiken avgörs av order-metadatafältet **`pickup_store`** (satt av butikens hämtningsplugin), med `pickup_store_id` som fallback. Ordrar utan något av fälten hamnar under "Okänd". Bygger på `getMonthlyReport` i `src/lib/woocommerce.ts` — räknar med ordrar i status Slutförd + Behandlas, och antar 6 % som enda momssats.
