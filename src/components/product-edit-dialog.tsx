@@ -1,19 +1,38 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Plus, X } from "lucide-react";
 import Image from "next/image";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
-import { Spinner } from "@/components/ui/spinner";
-import { updateProduct, WooCommerceApiError } from "@/lib/woocommerce";
+import { LoadingBlock, Spinner } from "@/components/ui/spinner";
+import {
+  listVariations,
+  updateProduct,
+  updateVariation,
+  WooCommerceApiError,
+} from "@/lib/woocommerce";
 import type { WooSettings } from "@/lib/settings";
-import type { WooCategory, WooProduct } from "@/lib/types";
+import type { WooCategory, WooProduct, WooVariation } from "@/lib/types";
 
 interface WorkingImage {
   id?: number;
   src: string;
+}
+
+interface VariationEdit {
+  regular_price: string;
+  stock_quantity: string;
+}
+
+function toVariationEdit(v: WooVariation): VariationEdit {
+  return { regular_price: v.regular_price, stock_quantity: String(v.stock_quantity ?? "") };
+}
+
+function variationLabel(variation: WooVariation): string {
+  const attrs = variation.attributes.map((a) => a.option).filter(Boolean).join(" / ");
+  return attrs || variation.sku || `Variant #${variation.id}`;
 }
 
 export function ProductEditDialog({
@@ -58,6 +77,8 @@ function ProductEditForm({
   onClose: () => void;
   onSaved: (updated: WooProduct) => void;
 }) {
+  const isVariable = product.type === "variable";
+
   const [name, setName] = useState(product.name);
   const [regularPrice, setRegularPrice] = useState(product.regular_price);
   const [stockQuantity, setStockQuantity] = useState(String(product.stock_quantity ?? ""));
@@ -70,6 +91,32 @@ function ProductEditForm({
   const [newImageUrl, setNewImageUrl] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [variations, setVariations] = useState<WooVariation[] | null>(null);
+  const [variationEdits, setVariationEdits] = useState<Record<number, VariationEdit>>({});
+  const [loadingVariations, setLoadingVariations] = useState(isVariable);
+
+  useEffect(() => {
+    if (!isVariable) return;
+    let cancelled = false;
+    listVariations(settings, product.id)
+      .then((data) => {
+        if (cancelled) return;
+        setVariations(data);
+        setVariationEdits(Object.fromEntries(data.map((v) => [v.id, toVariationEdit(v)])));
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setError(err instanceof WooCommerceApiError ? err.message : "Kunde inte hämta varianter.");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingVariations(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isVariable, product.id, settings]);
 
   function toggleCategory(id: number) {
     setSelectedCategoryIds((prev) => {
@@ -94,8 +141,6 @@ function ProductEditForm({
     setImages((prev) => prev.filter((_, i) => i !== index));
   }
 
-  const isVariable = product.type === "variable";
-
   async function handleSave() {
     setSaving(true);
     setError(null);
@@ -111,6 +156,22 @@ function ProductEditForm({
               stock_quantity: stockQuantity === "" ? null : Number(stockQuantity),
             }),
       });
+
+      if (isVariable && variations) {
+        for (const variation of variations) {
+          const edit = variationEdits[variation.id];
+          if (!edit) continue;
+          const changed =
+            edit.regular_price !== variation.regular_price ||
+            edit.stock_quantity !== String(variation.stock_quantity ?? "");
+          if (!changed) continue;
+          await updateVariation(settings, product.id, variation.id, {
+            regular_price: edit.regular_price,
+            stock_quantity: edit.stock_quantity === "" ? null : Number(edit.stock_quantity),
+          });
+        }
+      }
+
       onSaved(updated);
       onClose();
     } catch (err) {
@@ -128,9 +189,55 @@ function ProductEditForm({
       </div>
 
       {isVariable ? (
-        <p className="text-sm text-muted">
-          Pris och lager hanteras per variant — expandera produkten i listan.
-        </p>
+        <div>
+          <Label>Varianter</Label>
+          {loadingVariations ? (
+            <LoadingBlock label="Laddar varianter…" />
+          ) : variations && variations.length > 0 ? (
+            <div className="max-h-56 overflow-y-auto rounded-md border border-border">
+              <table className="w-full text-sm">
+                <tbody>
+                  {variations.map((variation) => {
+                    const edit = variationEdits[variation.id] ?? toVariationEdit(variation);
+                    return (
+                      <tr key={variation.id} className="border-b border-border last:border-0">
+                        <td className="py-2 pl-3 pr-2">{variationLabel(variation)}</td>
+                        <td className="py-2 pr-2">
+                          <Input
+                            value={edit.regular_price}
+                            onChange={(e) =>
+                              setVariationEdits((prev) => ({
+                                ...prev,
+                                [variation.id]: { ...edit, regular_price: e.target.value },
+                              }))
+                            }
+                            className="w-20"
+                          />
+                        </td>
+                        <td className="py-2 pr-3">
+                          <Input
+                            type="number"
+                            value={edit.stock_quantity}
+                            disabled={!variation.manage_stock}
+                            onChange={(e) =>
+                              setVariationEdits((prev) => ({
+                                ...prev,
+                                [variation.id]: { ...edit, stock_quantity: e.target.value },
+                              }))
+                            }
+                            className="w-16"
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="text-sm text-muted py-1">Inga varianter hittades.</p>
+          )}
+        </div>
       ) : (
         <div className="flex gap-4">
           <div className="flex-1">
@@ -221,7 +328,7 @@ function ProductEditForm({
         <Button variant="secondary" onClick={onClose}>
           Avbryt
         </Button>
-        <Button onClick={handleSave} disabled={saving}>
+        <Button onClick={handleSave} disabled={saving || loadingVariations}>
           {saving && <Spinner />}
           Spara
         </Button>
