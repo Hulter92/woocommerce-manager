@@ -59,6 +59,8 @@ function ProductEditForm({
   onSaved: (updated: WooProduct) => void;
 }) {
   const [name, setName] = useState(product.name);
+  const [regularPrice, setRegularPrice] = useState(product.regular_price);
+  const [stockQuantity, setStockQuantity] = useState(String(product.stock_quantity ?? ""));
   const [selectedCategoryIds, setSelectedCategoryIds] = useState(
     () => new Set(product.categories.map((c) => c.id))
   );
@@ -92,6 +94,8 @@ function ProductEditForm({
     setImages((prev) => prev.filter((_, i) => i !== index));
   }
 
+  const isVariable = product.type === "variable";
+
   async function handleSave() {
     setSaving(true);
     setError(null);
@@ -100,6 +104,12 @@ function ProductEditForm({
         name,
         categories: Array.from(selectedCategoryIds, (id) => ({ id })),
         images: images.map((img) => (img.id ? { id: img.id } : { src: img.src })),
+        ...(isVariable
+          ? {}
+          : {
+              regular_price: regularPrice,
+              stock_quantity: stockQuantity === "" ? null : Number(stockQuantity),
+            }),
       });
       onSaved(updated);
       onClose();
@@ -116,6 +126,33 @@ function ProductEditForm({
         <Label htmlFor="product-name">Namn</Label>
         <Input id="product-name" value={name} onChange={(e) => setName(e.target.value)} />
       </div>
+
+      {isVariable ? (
+        <p className="text-sm text-muted">
+          Pris och lager hanteras per variant — expandera produkten i listan.
+        </p>
+      ) : (
+        <div className="flex gap-4">
+          <div className="flex-1">
+            <Label htmlFor="product-price">Pris</Label>
+            <Input
+              id="product-price"
+              value={regularPrice}
+              onChange={(e) => setRegularPrice(e.target.value)}
+            />
+          </div>
+          <div className="flex-1">
+            <Label htmlFor="product-stock">Lagersaldo</Label>
+            <Input
+              id="product-stock"
+              type="number"
+              value={stockQuantity}
+              disabled={!product.manage_stock}
+              onChange={(e) => setStockQuantity(e.target.value)}
+            />
+          </div>
+        </div>
+      )}
 
       <div>
         <Label>Kategorier</Label>

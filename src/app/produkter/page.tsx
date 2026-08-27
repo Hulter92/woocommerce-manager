@@ -15,7 +15,6 @@ import {
   listCategories,
   listProducts,
   listVariations,
-  updateProduct,
   updateVariation,
   WooCommerceApiError,
 } from "@/lib/woocommerce";
@@ -51,8 +50,6 @@ export default function ProdukterPage() {
   const [categoryId, setCategoryId] = useState<"" | number>("");
   const [categories, setCategories] = useState<WooCategory[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [edits, setEdits] = useState<Record<number, EditState>>({});
-  const [savingId, setSavingId] = useState<number | null>(null);
   const [loading, startTransition] = useTransition();
 
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
@@ -91,7 +88,6 @@ export default function ProdukterPage() {
         if (cancelled) return;
         setProducts(res.items);
         setTotalPages(Math.max(1, res.totalPages));
-        setEdits(Object.fromEntries(res.items.map((p) => [p.id, toEditState(p)])));
         setError(null);
       } catch (err) {
         if (cancelled) return;
@@ -106,25 +102,6 @@ export default function ProdukterPage() {
   function isDirty(edit: EditState | undefined, item: Pick<WooProduct | WooVariation, "regular_price" | "stock_quantity">) {
     if (!edit) return false;
     return edit.regular_price !== item.regular_price || edit.stock_quantity !== String(item.stock_quantity ?? "");
-  }
-
-  async function handleSave(product: WooProduct) {
-    const edit = edits[product.id];
-    if (!edit) return;
-    setSavingId(product.id);
-    setError(null);
-    try {
-      const updated = await updateProduct(settings, product.id, {
-        regular_price: edit.regular_price,
-        stock_quantity: edit.stock_quantity === "" ? null : Number(edit.stock_quantity),
-      });
-      setProducts((prev) => prev.map((p) => (p.id === product.id ? updated : p)));
-      setEdits((prev) => ({ ...prev, [product.id]: toEditState(updated) }));
-    } catch (err) {
-      setError(err instanceof WooCommerceApiError ? err.message : "Kunde inte spara produkten.");
-    } finally {
-      setSavingId(null);
-    }
   }
 
   async function toggleExpand(product: WooProduct) {
@@ -181,7 +158,7 @@ export default function ProdukterPage() {
       <div className="space-y-4">
         <div>
           <h1 className="text-xl font-semibold">Produkter</h1>
-          <p className="text-sm text-muted mt-1">Redigera pris och lagersaldo.</p>
+          <p className="text-sm text-muted mt-1">Klicka på pennan för att redigera en produkt.</p>
         </div>
 
         <div className="flex flex-wrap gap-3">
@@ -244,8 +221,6 @@ export default function ProdukterPage() {
                 <tbody>
                   {products.map((product) => {
                     const isVariable = product.type === "variable";
-                    const edit = edits[product.id] ?? { regular_price: "", stock_quantity: "" };
-                    const dirty = isDirty(edit, product);
                     const stockInfo = STOCK_LABEL[product.stock_status];
                     const isExpanded = expanded.has(product.id);
                     const variations = variationsByProduct[product.id];
@@ -284,70 +259,33 @@ export default function ProdukterPage() {
                               </div>
                             </div>
                           </td>
-                          <td className="px-4 py-3">
+                          <td className="px-4 py-3 text-sm">
                             {isVariable ? (
                               <button
                                 onClick={() => toggleExpand(product)}
-                                className="text-sm text-primary hover:underline"
+                                className="text-primary hover:underline"
                               >
                                 Varierar
                               </button>
                             ) : (
-                              <Input
-                                value={edit.regular_price}
-                                onChange={(e) =>
-                                  setEdits((prev) => ({
-                                    ...prev,
-                                    [product.id]: { ...edit, regular_price: e.target.value },
-                                  }))
-                                }
-                                className="w-24"
-                              />
+                              product.regular_price || "—"
                             )}
                           </td>
-                          <td className="px-4 py-3">
-                            {isVariable ? (
-                              <span className="text-sm text-muted">—</span>
-                            ) : (
-                              <Input
-                                type="number"
-                                value={edit.stock_quantity}
-                                disabled={!product.manage_stock}
-                                onChange={(e) =>
-                                  setEdits((prev) => ({
-                                    ...prev,
-                                    [product.id]: { ...edit, stock_quantity: e.target.value },
-                                  }))
-                                }
-                                className="w-20"
-                              />
-                            )}
+                          <td className="px-4 py-3 text-sm">
+                            {isVariable ? "—" : product.manage_stock ? (product.stock_quantity ?? 0) : "—"}
                           </td>
                           <td className="px-4 py-3">
                             <Badge tone={stockInfo.tone}>{stockInfo.label}</Badge>
                           </td>
                           <td className="px-4 py-3 text-right">
-                            <div className="flex items-center justify-end gap-2">
-                              {!isVariable && (
-                                <Button
-                                  size="sm"
-                                  variant="secondary"
-                                  disabled={!dirty || savingId === product.id}
-                                  onClick={() => handleSave(product)}
-                                >
-                                  {savingId === product.id ? <Spinner /> : <Save size={14} />}
-                                  Spara
-                                </Button>
-                              )}
-                              <button
-                                onClick={() => setEditingProduct(product)}
-                                className="text-muted hover:text-foreground"
-                                aria-label="Redigera produkt"
-                                title="Redigera namn, kategorier och bilder"
-                              >
-                                <Pencil size={16} />
-                              </button>
-                            </div>
+                            <button
+                              onClick={() => setEditingProduct(product)}
+                              className="text-muted hover:text-foreground"
+                              aria-label="Redigera produkt"
+                              title="Redigera namn, pris, lager, kategorier och bilder"
+                            >
+                              <Pencil size={16} />
+                            </button>
                           </td>
                         </tr>
 
