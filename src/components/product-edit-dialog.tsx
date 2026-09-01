@@ -5,7 +5,7 @@ import { Plus, X } from "lucide-react";
 import Image from "next/image";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input, Label } from "@/components/ui/input";
+import { Input, Label, Textarea } from "@/components/ui/input";
 import { LoadingBlock, Spinner } from "@/components/ui/spinner";
 import {
   listVariations,
@@ -80,6 +80,8 @@ function ProductEditForm({
   const isVariable = product.type === "variable";
 
   const [name, setName] = useState(product.name);
+  const [shortDescription, setShortDescription] = useState(product.short_description);
+  const [description, setDescription] = useState(product.description);
   const [regularPrice, setRegularPrice] = useState(product.regular_price);
   const [stockQuantity, setStockQuantity] = useState(String(product.stock_quantity ?? ""));
   const [selectedCategoryIds, setSelectedCategoryIds] = useState(
@@ -147,6 +149,8 @@ function ProductEditForm({
     try {
       const updated = await updateProduct(settings, product.id, {
         name,
+        short_description: shortDescription,
+        description,
         categories: Array.from(selectedCategoryIds, (id) => ({ id })),
         images: images.map((img) => (img.id ? { id: img.id } : { src: img.src })),
         ...(isVariable
@@ -186,6 +190,26 @@ function ProductEditForm({
       <div>
         <Label htmlFor="product-name">Namn</Label>
         <Input id="product-name" value={name} onChange={(e) => setName(e.target.value)} />
+      </div>
+
+      <div>
+        <Label htmlFor="product-short-description">Kort beskrivning</Label>
+        <Textarea
+          id="product-short-description"
+          rows={3}
+          value={shortDescription}
+          onChange={(e) => setShortDescription(e.target.value)}
+        />
+      </div>
+
+      <div>
+        <Label htmlFor="product-description">Beskrivning</Label>
+        <Textarea
+          id="product-description"
+          rows={6}
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+        />
       </div>
 
       {isVariable ? (

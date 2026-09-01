@@ -212,6 +212,8 @@ export interface UpdateProductInput {
   sale_price?: string;
   stock_quantity?: number | null;
   name?: string;
+  description?: string;
+  short_description?: string;
   categories?: { id: number }[];
   images?: ({ id: number } | { src: string })[];
 }

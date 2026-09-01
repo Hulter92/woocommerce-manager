@@ -61,6 +61,8 @@ export interface WooProduct {
   sku: string;
   permalink: string;
   type: "simple" | "variable" | "grouped" | "external";
+  description: string;
+  short_description: string;
   price: string;
   regular_price: string;
   sale_price: string;
