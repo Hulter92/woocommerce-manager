@@ -12,11 +12,20 @@ const REPORT_TITLES: Record<WooReport["granularity"], string> = {
   day: "DAGSRAPPORT",
   month: "MÅNADSRAPPORT",
   year: "ÅRSRAPPORT",
+  range: "PERIODRAPPORT",
 };
+
+function formatPeriodLabel(report: WooReport): string {
+  if (report.granularity === "range") {
+    const [from, to] = report.period.split("..");
+    return `${from} – ${to}`;
+  }
+  return report.period;
+}
 
 export function formatReportText(report: WooReport): string {
   const lines: string[] = [];
-  lines.push(`${REPORT_TITLES[report.granularity]} ${report.period}`);
+  lines.push(`${REPORT_TITLES[report.granularity]} ${formatPeriodLabel(report)}`);
   lines.push("");
   lines.push(`1930 Bank: ${formatAmount(report.bankTotal, report.currency)}`);
   lines.push(`2630 Utgående moms 6%: ${formatAmount(report.vatTotal, report.currency)}`);

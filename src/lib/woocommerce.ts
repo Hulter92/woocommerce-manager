@@ -437,6 +437,10 @@ async function getAllOrdersInRange(
   return all;
 }
 
+function dayAfter(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1);
+}
+
 function getReportRange(
   granularity: WooReportGranularity,
   period: string
@@ -445,13 +449,21 @@ function getReportRange(
     case "day": {
       const [year, month, day] = period.split("-").map(Number);
       const after = new Date(year, month - 1, day);
-      const before = new Date(year, month - 1, day + 1);
+      const before = dayAfter(after);
       return { after: after.toISOString(), before: before.toISOString() };
     }
     case "year": {
       const year = Number(period);
       const after = new Date(year, 0, 1);
       const before = new Date(year + 1, 0, 1);
+      return { after: after.toISOString(), before: before.toISOString() };
+    }
+    case "range": {
+      const [from, to] = period.split("..");
+      const [fromYear, fromMonth, fromDay] = from.split("-").map(Number);
+      const [toYear, toMonth, toDay] = to.split("-").map(Number);
+      const after = new Date(fromYear, fromMonth - 1, fromDay);
+      const before = dayAfter(new Date(toYear, toMonth - 1, toDay));
       return { after: after.toISOString(), before: before.toISOString() };
     }
     case "month":

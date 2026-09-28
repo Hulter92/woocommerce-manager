@@ -18,29 +18,50 @@ const GRANULARITY_OPTIONS: { value: WooReportGranularity; label: string }[] = [
   { value: "day", label: "Dag" },
   { value: "month", label: "Månad" },
   { value: "year", label: "År" },
+  { value: "range", label: "Anpassad" },
 ];
 
 const FILENAME_PREFIX: Record<WooReportGranularity, string> = {
   day: "Dagsrapport",
   month: "Manadsrapport",
   year: "Arsrapport",
+  range: "Periodrapport",
 };
 
 function pad(n: number): string {
   return String(n).padStart(2, "0");
 }
 
+function toDateValue(date: Date): string {
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
 function defaultPeriod(granularity: WooReportGranularity): string {
   const now = new Date();
   if (granularity === "day") {
     const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-    return `${yesterday.getFullYear()}-${pad(yesterday.getMonth() + 1)}-${pad(yesterday.getDate())}`;
+    return toDateValue(yesterday);
   }
   if (granularity === "year") {
     return String(now.getFullYear());
   }
+  if (granularity === "range") {
+    const to = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+    const from = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
+    return `${toDateValue(from)}..${toDateValue(to)}`;
+  }
   const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   return `${lastMonth.getFullYear()}-${pad(lastMonth.getMonth() + 1)}`;
+}
+
+function filenamePeriod(report: WooReport): string {
+  return report.period.replace("..", "_");
+}
+
+function isPeriodComplete(granularity: WooReportGranularity, period: string): boolean {
+  if (granularity !== "range") return Boolean(period);
+  const [from, to] = period.split("..");
+  return Boolean(from) && Boolean(to);
 }
 
 export default function RapporterPage() {
@@ -58,7 +79,7 @@ export default function RapporterPage() {
   }
 
   useEffect(() => {
-    if (!configured || !period) return;
+    if (!configured || !isPeriodComplete(granularity, period)) return;
     let cancelled = false;
     startTransition(async () => {
       try {
@@ -81,7 +102,7 @@ export default function RapporterPage() {
     setSaveError(null);
     try {
       const path = await save({
-        defaultPath: `${FILENAME_PREFIX[report.granularity]}_${report.period}.txt`,
+        defaultPath: `${FILENAME_PREFIX[report.granularity]}_${filenamePeriod(report)}.txt`,
         filters: [{ name: "Textfil", extensions: ["txt"] }],
       });
       if (path) await writeTextFile(path, formatReportText(report));
@@ -95,7 +116,7 @@ export default function RapporterPage() {
     setSaveError(null);
     try {
       const path = await save({
-        defaultPath: `${FILENAME_PREFIX[report.granularity]}_${report.period}.csv`,
+        defaultPath: `${FILENAME_PREFIX[report.granularity]}_${filenamePeriod(report)}.csv`,
         filters: [{ name: "CSV", extensions: ["csv"] }],
       });
       if (path) await writeTextFile(path, formatReportCsv(report));
@@ -147,6 +168,25 @@ export default function RapporterPage() {
                 onChange={(e) => setPeriod(e.target.value)}
                 className="max-w-[100px]"
               />
+            )}
+            {granularity === "range" && (
+              <>
+                <Input
+                  type="date"
+                  value={period.split("..")[0]}
+                  max={period.split("..")[1]}
+                  onChange={(e) => setPeriod(`${e.target.value}..${period.split("..")[1]}`)}
+                  className="max-w-[160px]"
+                />
+                <span className="self-center text-sm text-muted">till</span>
+                <Input
+                  type="date"
+                  value={period.split("..")[1]}
+                  min={period.split("..")[0]}
+                  onChange={(e) => setPeriod(`${period.split("..")[0]}..${e.target.value}`)}
+                  className="max-w-[160px]"
+                />
+              </>
             )}
           </div>
         </div>

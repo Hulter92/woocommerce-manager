@@ -135,7 +135,7 @@ export interface WooTopSeller {
 
 export type WooReportPeriod = "today" | "week" | "month" | "last_month" | "year";
 
-export type WooReportGranularity = "day" | "month" | "year";
+export type WooReportGranularity = "day" | "month" | "year" | "range";
 
 export interface WooReportLocation {
   name: string;
