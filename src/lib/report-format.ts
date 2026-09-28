@@ -1,4 +1,4 @@
-import type { WooMonthlyReport } from "./types";
+import type { WooReport } from "./types";
 
 function formatAmount(amount: number, currency: string): string {
   try {
@@ -8,9 +8,15 @@ function formatAmount(amount: number, currency: string): string {
   }
 }
 
-export function formatMonthlyReportText(report: WooMonthlyReport): string {
+const REPORT_TITLES: Record<WooReport["granularity"], string> = {
+  day: "DAGSRAPPORT",
+  month: "MÅNADSRAPPORT",
+  year: "ÅRSRAPPORT",
+};
+
+export function formatReportText(report: WooReport): string {
   const lines: string[] = [];
-  lines.push(`MÅNADSRAPPORT ${report.yearMonth}`);
+  lines.push(`${REPORT_TITLES[report.granularity]} ${report.period}`);
   lines.push("");
   lines.push(`1930 Bank: ${formatAmount(report.bankTotal, report.currency)}`);
   lines.push(`2630 Utgående moms 6%: ${formatAmount(report.vatTotal, report.currency)}`);
@@ -27,7 +33,7 @@ export function formatMonthlyReportText(report: WooMonthlyReport): string {
   return lines.join("\n");
 }
 
-export function formatMonthlyReportCsv(report: WooMonthlyReport): string {
+export function formatReportCsv(report: WooReport): string {
   const rows: (string | number)[][] = [
     ["Konto", "Beskrivning", "Belopp"],
     ["1930", "Bank", report.bankTotal.toFixed(2)],

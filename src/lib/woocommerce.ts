@@ -3,10 +3,11 @@ import { normalizeStoreUrl, type WooSettings } from "./settings";
 import type {
   WooCategory,
   WooCustomer,
-  WooMonthlyReport,
   WooOrder,
   WooOrderStatus,
   WooProduct,
+  WooReport,
+  WooReportGranularity,
   WooReportPeriod,
   WooRevenueStats,
   WooTopSeller,
@@ -397,7 +398,7 @@ export async function getDashboardStats(
   };
 }
 
-// Monthly (bookkeeping) report
+// Period (bookkeeping) report
 //
 // Splits net sales (excl. VAT) by pickup location — read from the order's
 // "pickup_store" meta field (set by the store's pickup-scheduling plugin),
@@ -436,13 +437,39 @@ async function getAllOrdersInRange(
   return all;
 }
 
-export async function getMonthlyReport(
+function getReportRange(
+  granularity: WooReportGranularity,
+  period: string
+): { after: string; before: string } {
+  switch (granularity) {
+    case "day": {
+      const [year, month, day] = period.split("-").map(Number);
+      const after = new Date(year, month - 1, day);
+      const before = new Date(year, month - 1, day + 1);
+      return { after: after.toISOString(), before: before.toISOString() };
+    }
+    case "year": {
+      const year = Number(period);
+      const after = new Date(year, 0, 1);
+      const before = new Date(year + 1, 0, 1);
+      return { after: after.toISOString(), before: before.toISOString() };
+    }
+    case "month":
+    default: {
+      const [year, month] = period.split("-").map(Number);
+      const after = new Date(year, month - 1, 1);
+      const before = new Date(year, month, 1);
+      return { after: after.toISOString(), before: before.toISOString() };
+    }
+  }
+}
+
+export async function getReport(
   settings: WooSettings,
-  yearMonth: string
-): Promise<WooMonthlyReport> {
-  const [year, month] = yearMonth.split("-").map(Number);
-  const after = new Date(year, month - 1, 1).toISOString();
-  const before = new Date(year, month, 1).toISOString();
+  granularity: WooReportGranularity,
+  period: string
+): Promise<WooReport> {
+  const { after, before } = getReportRange(granularity, period);
 
   const [orders, revenueStats] = await Promise.all([
     getAllOrdersInRange(settings, after, before, ["completed", "processing"]),
@@ -475,7 +502,8 @@ export async function getMonthlyReport(
   );
 
   return {
-    yearMonth,
+    granularity,
+    period,
     currency: orders[0]?.currency ?? "SEK",
     bankTotal,
     vatTotal,

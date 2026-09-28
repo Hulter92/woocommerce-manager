@@ -135,17 +135,20 @@ export interface WooTopSeller {
 
 export type WooReportPeriod = "today" | "week" | "month" | "last_month" | "year";
 
-export interface WooMonthlyReportLocation {
+export type WooReportGranularity = "day" | "month" | "year";
+
+export interface WooReportLocation {
   name: string;
   netSales: number;
 }
 
-export interface WooMonthlyReport {
-  yearMonth: string;
+export interface WooReport {
+  granularity: WooReportGranularity;
+  period: string;
   currency: string;
   bankTotal: number;
   vatTotal: number;
-  locations: WooMonthlyReportLocation[];
+  locations: WooReportLocation[];
   refundsTotal: number;
   orderCount: number;
 }

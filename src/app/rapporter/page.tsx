@@ -8,32 +8,61 @@ import { useSettings } from "@/components/settings-provider";
 import { ConnectionGate } from "@/components/connection-gate";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Input, Select } from "@/components/ui/input";
 import { LoadingBlock } from "@/components/ui/spinner";
-import { getMonthlyReport, WooCommerceApiError } from "@/lib/woocommerce";
-import { formatMonthlyReportCsv, formatMonthlyReportText } from "@/lib/report-format";
-import type { WooMonthlyReport } from "@/lib/types";
+import { getReport, WooCommerceApiError } from "@/lib/woocommerce";
+import { formatReportCsv, formatReportText } from "@/lib/report-format";
+import type { WooReport, WooReportGranularity } from "@/lib/types";
 
-function defaultYearMonth(): string {
+const GRANULARITY_OPTIONS: { value: WooReportGranularity; label: string }[] = [
+  { value: "day", label: "Dag" },
+  { value: "month", label: "Månad" },
+  { value: "year", label: "År" },
+];
+
+const FILENAME_PREFIX: Record<WooReportGranularity, string> = {
+  day: "Dagsrapport",
+  month: "Manadsrapport",
+  year: "Arsrapport",
+};
+
+function pad(n: number): string {
+  return String(n).padStart(2, "0");
+}
+
+function defaultPeriod(granularity: WooReportGranularity): string {
   const now = new Date();
+  if (granularity === "day") {
+    const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+    return `${yesterday.getFullYear()}-${pad(yesterday.getMonth() + 1)}-${pad(yesterday.getDate())}`;
+  }
+  if (granularity === "year") {
+    return String(now.getFullYear());
+  }
   const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  return `${lastMonth.getFullYear()}-${String(lastMonth.getMonth() + 1).padStart(2, "0")}`;
+  return `${lastMonth.getFullYear()}-${pad(lastMonth.getMonth() + 1)}`;
 }
 
 export default function RapporterPage() {
   const { settings, configured } = useSettings();
-  const [yearMonth, setYearMonth] = useState(defaultYearMonth);
-  const [report, setReport] = useState<WooMonthlyReport | null>(null);
+  const [granularity, setGranularity] = useState<WooReportGranularity>("month");
+  const [period, setPeriod] = useState(() => defaultPeriod("month"));
+  const [report, setReport] = useState<WooReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [loading, startTransition] = useTransition();
 
+  function changeGranularity(next: WooReportGranularity) {
+    setGranularity(next);
+    setPeriod(defaultPeriod(next));
+  }
+
   useEffect(() => {
-    if (!configured || !yearMonth) return;
+    if (!configured || !period) return;
     let cancelled = false;
     startTransition(async () => {
       try {
-        const data = await getMonthlyReport(settings, yearMonth);
+        const data = await getReport(settings, granularity, period);
         if (cancelled) return;
         setReport(data);
         setError(null);
@@ -45,17 +74,17 @@ export default function RapporterPage() {
     return () => {
       cancelled = true;
     };
-  }, [configured, settings, yearMonth]);
+  }, [configured, settings, granularity, period]);
 
   async function handleSaveText() {
     if (!report) return;
     setSaveError(null);
     try {
       const path = await save({
-        defaultPath: `Manadsrapport_${report.yearMonth}.txt`,
+        defaultPath: `${FILENAME_PREFIX[report.granularity]}_${report.period}.txt`,
         filters: [{ name: "Textfil", extensions: ["txt"] }],
       });
-      if (path) await writeTextFile(path, formatMonthlyReportText(report));
+      if (path) await writeTextFile(path, formatReportText(report));
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "Kunde inte spara filen.");
     }
@@ -66,10 +95,10 @@ export default function RapporterPage() {
     setSaveError(null);
     try {
       const path = await save({
-        defaultPath: `Manadsrapport_${report.yearMonth}.csv`,
+        defaultPath: `${FILENAME_PREFIX[report.granularity]}_${report.period}.csv`,
         filters: [{ name: "CSV", extensions: ["csv"] }],
       });
-      if (path) await writeTextFile(path, formatMonthlyReportCsv(report));
+      if (path) await writeTextFile(path, formatReportCsv(report));
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "Kunde inte spara filen.");
     }
@@ -81,14 +110,45 @@ export default function RapporterPage() {
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h1 className="text-xl font-semibold">Rapporter</h1>
-            <p className="text-sm text-muted mt-1">Månadsrapport för bokföring, per hämtställe.</p>
+            <p className="text-sm text-muted mt-1">Försäljningsrapport för bokföring, per hämtställe.</p>
           </div>
-          <Input
-            type="month"
-            value={yearMonth}
-            onChange={(e) => setYearMonth(e.target.value)}
-            className="max-w-[180px]"
-          />
+          <div className="flex gap-2">
+            <Select
+              value={granularity}
+              onChange={(e) => changeGranularity(e.target.value as WooReportGranularity)}
+              className="max-w-[120px]"
+            >
+              {GRANULARITY_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </Select>
+            {granularity === "day" && (
+              <Input
+                type="date"
+                value={period}
+                onChange={(e) => setPeriod(e.target.value)}
+                className="max-w-[160px]"
+              />
+            )}
+            {granularity === "month" && (
+              <Input
+                type="month"
+                value={period}
+                onChange={(e) => setPeriod(e.target.value)}
+                className="max-w-[160px]"
+              />
+            )}
+            {granularity === "year" && (
+              <Input
+                type="number"
+                value={period}
+                onChange={(e) => setPeriod(e.target.value)}
+                className="max-w-[100px]"
+              />
+            )}
+          </div>
         </div>
 
         {loading && <LoadingBlock />}
@@ -100,12 +160,12 @@ export default function RapporterPage() {
             <CardContent className="space-y-4">
               {report.orderCount === 0 ? (
                 <p className="text-sm text-muted text-center py-6">
-                  Inga ordrar hittades för denna månad.
+                  Inga ordrar hittades för denna period.
                 </p>
               ) : (
                 <>
                   <pre className="whitespace-pre-wrap rounded-md bg-muted-bg p-4 text-sm font-mono">
-                    {formatMonthlyReportText(report)}
+                    {formatReportText(report)}
                   </pre>
                   <div className="flex gap-2">
                     <Button size="sm" variant="secondary" onClick={handleSaveText}>
