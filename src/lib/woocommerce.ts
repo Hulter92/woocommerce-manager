@@ -398,6 +398,35 @@ export async function updateVariation(
   return data;
 }
 
+export interface CreateVariationInput {
+  attributes: { id: number; option: string }[];
+  regular_price: string;
+  stock_quantity?: number | null;
+}
+
+export async function createVariation(
+  settings: WooSettings,
+  productId: number,
+  input: CreateVariationInput
+): Promise<WooVariation> {
+  const { data } = await request<WooVariation>(settings, `/products/${productId}/variations`, {
+    method: "POST",
+    body: input,
+  });
+  return data;
+}
+
+export async function deleteVariation(
+  settings: WooSettings,
+  productId: number,
+  variationId: number
+): Promise<void> {
+  await request(settings, `/products/${productId}/variations/${variationId}`, {
+    method: "DELETE",
+    params: { force: true },
+  });
+}
+
 // Customers
 
 export interface ListCustomersOptions {

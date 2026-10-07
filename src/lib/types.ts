@@ -80,6 +80,7 @@ export interface WooProduct {
   status: "publish" | "draft" | "pending" | "private";
   images: WooImage[];
   categories: { id: number; name: string; slug: string }[];
+  attributes: { id: number; name: string; variation: boolean; options: string[] }[];
 }
 
 export interface WooCategory {

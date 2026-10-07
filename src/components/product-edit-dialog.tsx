@@ -1,13 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plus, X } from "lucide-react";
+import { Plus, Trash2, X } from "lucide-react";
 import Image from "next/image";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input, Label, Textarea } from "@/components/ui/input";
+import { Input, Label, Select, Textarea } from "@/components/ui/input";
 import { LoadingBlock, Spinner } from "@/components/ui/spinner";
 import {
+  createVariation,
+  deleteVariation,
   listVariations,
   updateProduct,
   updateVariation,
@@ -97,6 +99,17 @@ function ProductEditForm({
   const [variations, setVariations] = useState<WooVariation[] | null>(null);
   const [variationEdits, setVariationEdits] = useState<Record<number, VariationEdit>>({});
   const [loadingVariations, setLoadingVariations] = useState(isVariable);
+  const [deletingVariationId, setDeletingVariationId] = useState<number | null>(null);
+
+  const variationAttributes = product.attributes.filter((a) => a.variation);
+  const [addingVariant, setAddingVariant] = useState(false);
+  const [newVariantOptions, setNewVariantOptions] = useState<Record<number, string>>(() =>
+    Object.fromEntries(variationAttributes.map((a) => [a.id, a.options[0] ?? ""]))
+  );
+  const [newVariantPrice, setNewVariantPrice] = useState("");
+  const [newVariantStock, setNewVariantStock] = useState("");
+  const [creatingVariant, setCreatingVariant] = useState(false);
+  const [variantError, setVariantError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isVariable) return;
@@ -119,6 +132,49 @@ function ProductEditForm({
       cancelled = true;
     };
   }, [isVariable, product.id, settings]);
+
+  async function handleDeleteVariation(variation: WooVariation) {
+    if (!window.confirm(`Ta bort varianten "${variationLabel(variation)}"?`)) return;
+    setDeletingVariationId(variation.id);
+    try {
+      await deleteVariation(settings, product.id, variation.id);
+      setVariations((prev) => prev && prev.filter((v) => v.id !== variation.id));
+      setVariationEdits((prev) => {
+        const next = { ...prev };
+        delete next[variation.id];
+        return next;
+      });
+    } catch (err) {
+      setVariantError(
+        err instanceof WooCommerceApiError ? err.message : "Kunde inte ta bort varianten."
+      );
+    } finally {
+      setDeletingVariationId(null);
+    }
+  }
+
+  async function handleCreateVariation() {
+    setCreatingVariant(true);
+    setVariantError(null);
+    try {
+      const created = await createVariation(settings, product.id, {
+        attributes: variationAttributes.map((a) => ({ id: a.id, option: newVariantOptions[a.id] })),
+        regular_price: newVariantPrice,
+        stock_quantity: newVariantStock === "" ? null : Number(newVariantStock),
+      });
+      setVariations((prev) => [...(prev ?? []), created]);
+      setVariationEdits((prev) => ({ ...prev, [created.id]: toVariationEdit(created) }));
+      setNewVariantPrice("");
+      setNewVariantStock("");
+      setAddingVariant(false);
+    } catch (err) {
+      setVariantError(
+        err instanceof WooCommerceApiError ? err.message : "Kunde inte skapa varianten."
+      );
+    } finally {
+      setCreatingVariant(false);
+    }
+  }
 
   function toggleCategory(id: number) {
     setSelectedCategoryIds((prev) => {
@@ -238,7 +294,7 @@ function ProductEditForm({
                             className="w-20"
                           />
                         </td>
-                        <td className="py-2 pr-3">
+                        <td className="py-2 pr-2">
                           <Input
                             type="number"
                             value={edit.stock_quantity}
@@ -252,6 +308,20 @@ function ProductEditForm({
                             className="w-16"
                           />
                         </td>
+                        <td className="py-2 pr-3 text-right">
+                          <button
+                            onClick={() => handleDeleteVariation(variation)}
+                            disabled={deletingVariationId === variation.id}
+                            className="text-muted hover:text-danger disabled:opacity-50"
+                            aria-label="Ta bort variant"
+                          >
+                            {deletingVariationId === variation.id ? (
+                              <Spinner />
+                            ) : (
+                              <Trash2 size={14} />
+                            )}
+                          </button>
+                        </td>
                       </tr>
                     );
                   })}
@@ -260,6 +330,67 @@ function ProductEditForm({
             </div>
           ) : (
             <p className="text-sm text-muted py-1">Inga varianter hittades.</p>
+          )}
+
+          {variantError && <p className="text-sm text-danger mt-2">{variantError}</p>}
+
+          {variationAttributes.length === 0 ? (
+            <p className="text-sm text-muted mt-2">
+              Produkten saknar attribut för varianter — lägg till attribut på produkten i
+              WooCommerce-admin först.
+            </p>
+          ) : addingVariant ? (
+            <div className="mt-2 rounded-md border border-border p-3 space-y-2">
+              <div className="flex flex-wrap gap-2">
+                {variationAttributes.map((attr) => (
+                  <Select
+                    key={attr.id}
+                    value={newVariantOptions[attr.id] ?? ""}
+                    onChange={(e) =>
+                      setNewVariantOptions((prev) => ({ ...prev, [attr.id]: e.target.value }))
+                    }
+                    className="max-w-[160px]"
+                  >
+                    {attr.options.map((opt) => (
+                      <option key={opt} value={opt}>
+                        {attr.name}: {opt}
+                      </option>
+                    ))}
+                  </Select>
+                ))}
+                <Input
+                  placeholder="Pris"
+                  value={newVariantPrice}
+                  onChange={(e) => setNewVariantPrice(e.target.value)}
+                  className="w-20"
+                />
+                <Input
+                  type="number"
+                  placeholder="Lager"
+                  value={newVariantStock}
+                  onChange={(e) => setNewVariantStock(e.target.value)}
+                  className="w-20"
+                />
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  onClick={handleCreateVariation}
+                  disabled={creatingVariant || !newVariantPrice}
+                >
+                  {creatingVariant && <Spinner />}
+                  Spara variant
+                </Button>
+                <Button variant="secondary" size="sm" onClick={() => setAddingVariant(false)}>
+                  Avbryt
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <Button variant="secondary" size="sm" className="mt-2" onClick={() => setAddingVariant(true)}>
+              <Plus size={14} />
+              Lägg till variant
+            </Button>
           )}
         </div>
       ) : (
