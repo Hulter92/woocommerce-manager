@@ -212,6 +212,8 @@ export interface UpdateProductInput {
   regular_price?: string;
   sale_price?: string;
   stock_quantity?: number | null;
+  status?: WooProduct["status"];
+  stock_status?: WooProduct["stock_status"];
   name?: string;
   description?: string;
   short_description?: string;

@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { LoadingBlock } from "@/components/ui/spinner";
 import { ProductEditDialog } from "@/components/product-edit-dialog";
+import { BulkEditDialog } from "@/components/bulk-edit-dialog";
 import { listCategories, listProducts, WooCommerceApiError } from "@/lib/woocommerce";
 import type { WooCategory, WooProduct } from "@/lib/types";
 
@@ -32,6 +33,8 @@ export default function ProdukterPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, startTransition] = useTransition();
   const [editingProduct, setEditingProduct] = useState<WooProduct | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkEditing, setBulkEditing] = useState(false);
 
   useEffect(() => {
     if (!configured) return;
@@ -62,6 +65,7 @@ export default function ProdukterPage() {
         if (cancelled) return;
         setProducts(res.items);
         setTotalPages(Math.max(1, res.totalPages));
+        setSelectedIds(new Set());
         setError(null);
       } catch (err) {
         if (cancelled) return;
@@ -72,6 +76,26 @@ export default function ProdukterPage() {
       cancelled = true;
     };
   }, [configured, settings, page, search, stockStatus, categoryId]);
+
+  function toggleSelected(id: number) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    setSelectedIds((prev) =>
+      prev.size === products.length ? new Set() : new Set(products.map((p) => p.id))
+    );
+  }
+
+  const selectedProducts = products.filter((p) => selectedIds.has(p.id));
 
   return (
     <ConnectionGate>
@@ -123,6 +147,20 @@ export default function ProdukterPage() {
 
         {error && <p className="text-sm text-danger">{error}</p>}
 
+        {selectedIds.size > 0 && (
+          <div className="flex items-center justify-between rounded-md border border-border bg-muted-bg px-4 py-2.5">
+            <p className="text-sm font-medium">{selectedIds.size} markerade</p>
+            <div className="flex gap-2">
+              <Button variant="secondary" size="sm" onClick={() => setSelectedIds(new Set())}>
+                Avmarkera
+              </Button>
+              <Button size="sm" onClick={() => setBulkEditing(true)}>
+                Redigera markerade
+              </Button>
+            </div>
+          </div>
+        )}
+
         <Card>
           <CardContent className="p-0">
             {loading ? (
@@ -131,6 +169,14 @@ export default function ProdukterPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border text-left text-xs text-muted">
+                    <th className="px-4 py-3 font-medium w-8">
+                      <input
+                        type="checkbox"
+                        checked={products.length > 0 && selectedIds.size === products.length}
+                        onChange={toggleSelectAll}
+                        aria-label="Markera alla på sidan"
+                      />
+                    </th>
                     <th className="px-4 py-3 font-medium">Produkt</th>
                     <th className="px-4 py-3 font-medium">Pris</th>
                     <th className="px-4 py-3 font-medium">Lager</th>
@@ -145,6 +191,14 @@ export default function ProdukterPage() {
 
                     return (
                       <tr key={product.id} className="border-b border-border last:border-0">
+                        <td className="px-4 py-3">
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.has(product.id)}
+                            onChange={() => toggleSelected(product.id)}
+                            aria-label={`Markera ${product.name}`}
+                          />
+                        </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2">
                             {product.images[0] ? (
@@ -191,7 +245,7 @@ export default function ProdukterPage() {
                   })}
                   {products.length === 0 && (
                     <tr>
-                      <td className="px-4 py-6 text-center text-muted" colSpan={5}>
+                      <td className="px-4 py-6 text-center text-muted" colSpan={6}>
                         Inga produkter hittades.
                       </td>
                     </tr>
@@ -236,6 +290,22 @@ export default function ProdukterPage() {
           setProducts((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
         }}
       />
+
+      {bulkEditing && (
+        <BulkEditDialog
+          products={selectedProducts}
+          categories={categories}
+          settings={settings}
+          onClose={() => setBulkEditing(false)}
+          onSaved={(updated) => {
+            setProducts((prev) => {
+              const byId = new Map(updated.map((p) => [p.id, p]));
+              return prev.map((p) => byId.get(p.id) ?? p);
+            });
+            setSelectedIds(new Set());
+          }}
+        />
+      )}
     </ConnectionGate>
   );
 }
