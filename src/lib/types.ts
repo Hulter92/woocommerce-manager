@@ -78,6 +78,9 @@ export interface WooCategory {
   id: number;
   name: string;
   slug: string;
+  parent: number;
+  description: string;
+  menu_order: number;
   count: number;
 }
 

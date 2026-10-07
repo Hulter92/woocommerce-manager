@@ -201,11 +201,52 @@ export function listProducts(settings: WooSettings, options: ListProductsOptions
   });
 }
 
-export async function listCategories(settings: WooSettings): Promise<WooCategory[]> {
+export async function listCategories(
+  settings: WooSettings,
+  options: { hideEmpty?: boolean; orderby?: "name" | "menu_order" } = {}
+): Promise<WooCategory[]> {
+  const { hideEmpty = true, orderby = "name" } = options;
   const { data } = await request<WooCategory[]>(settings, "/products/categories", {
-    params: { per_page: 100, orderby: "name", order: "asc", hide_empty: true },
+    params: { per_page: 100, orderby, order: "asc", hide_empty: hideEmpty },
   });
   return data;
+}
+
+export interface CategoryInput {
+  name: string;
+  parent?: number;
+  description?: string;
+  menu_order?: number;
+}
+
+export async function createCategory(
+  settings: WooSettings,
+  input: CategoryInput
+): Promise<WooCategory> {
+  const { data } = await request<WooCategory>(settings, "/products/categories", {
+    method: "POST",
+    body: input,
+  });
+  return data;
+}
+
+export async function updateCategory(
+  settings: WooSettings,
+  categoryId: number,
+  input: Partial<CategoryInput>
+): Promise<WooCategory> {
+  const { data } = await request<WooCategory>(settings, `/products/categories/${categoryId}`, {
+    method: "PUT",
+    body: input,
+  });
+  return data;
+}
+
+export async function deleteCategory(settings: WooSettings, categoryId: number): Promise<void> {
+  await request(settings, `/products/categories/${categoryId}`, {
+    method: "DELETE",
+    params: { force: true },
+  });
 }
 
 export interface UpdateProductInput {

@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { FileText, LayoutDashboard, Package, Settings, ShoppingCart, Users } from "lucide-react";
+import { FileText, LayoutDashboard, Package, Settings, ShoppingCart, Tags, Users } from "lucide-react";
 import { useSettings } from "@/components/settings-provider";
 
 const links = [
   { href: "/", label: "Översikt", icon: LayoutDashboard },
   { href: "/ordrar", label: "Ordrar", icon: ShoppingCart },
   { href: "/produkter", label: "Produkter", icon: Package },
+  { href: "/kategorier", label: "Kategorier", icon: Tags },
   { href: "/kunder", label: "Kunder", icon: Users },
   { href: "/rapporter", label: "Rapporter", icon: FileText },
 ];
