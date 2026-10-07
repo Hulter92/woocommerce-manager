@@ -2,7 +2,9 @@
 
 import { Suspense, useEffect, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Trash2 } from "lucide-react";
+import { Download, Trash2 } from "lucide-react";
+import { save } from "@tauri-apps/plugin-dialog";
+import { writeTextFile } from "@tauri-apps/plugin-fs";
 import { useSettings } from "@/components/settings-provider";
 import { ConnectionGate } from "@/components/connection-gate";
 import { Card, CardContent } from "@/components/ui/card";
@@ -11,7 +13,14 @@ import { Button } from "@/components/ui/button";
 import { LoadingBlock, Spinner } from "@/components/ui/spinner";
 import { ORDER_STATUS_OPTIONS, OrderStatusBadge } from "@/components/status-badge";
 import { OrderDetailDialog } from "@/components/order-detail-dialog";
-import { listOrders, trashOrder, updateOrderStatus, WooCommerceApiError } from "@/lib/woocommerce";
+import { rowsToCsv } from "@/lib/csv";
+import {
+  listAllOrders,
+  listOrders,
+  trashOrder,
+  updateOrderStatus,
+  WooCommerceApiError,
+} from "@/lib/woocommerce";
 import type { WooOrder, WooOrderStatus } from "@/lib/types";
 
 function formatMoney(value: string, currency: string) {
@@ -52,6 +61,8 @@ function OrdrarPageInner() {
   const [trashingId, setTrashingId] = useState<number | null>(null);
   const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
   const [loading, startTransition] = useTransition();
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!configured) return;
@@ -98,13 +109,68 @@ function OrdrarPageInner() {
     }
   }
 
+  async function handleExport() {
+    setExporting(true);
+    setExportError(null);
+    try {
+      const all = await listAllOrders(settings, { status, search, customerId });
+      const rows: (string | number)[][] = [
+        [
+          "Nummer",
+          "Status",
+          "Datum",
+          "Kund",
+          "E-post",
+          "Totalt",
+          "Frakt",
+          "Moms",
+          "Rabatt",
+          "Betalsätt",
+          "Radartiklar",
+        ],
+        ...all.map((o) => [
+          o.number,
+          o.status,
+          formatDate(o.date_created),
+          `${o.billing.first_name} ${o.billing.last_name}`.trim(),
+          o.billing.email,
+          o.total,
+          o.shipping_total,
+          o.total_tax,
+          o.discount_total,
+          o.payment_method_title,
+          o.line_items.map((li) => `${li.quantity}x ${li.name} (${li.total})`).join("; "),
+        ]),
+      ];
+      const path = await save({
+        defaultPath: `Ordrar_${new Date().toISOString().slice(0, 10)}.csv`,
+        filters: [{ name: "CSV", extensions: ["csv"] }],
+      });
+      if (path) await writeTextFile(path, rowsToCsv(rows));
+    } catch (err) {
+      setExportError(
+        err instanceof WooCommerceApiError ? err.message : "Kunde inte exportera ordrar."
+      );
+    } finally {
+      setExporting(false);
+    }
+  }
+
   return (
     <ConnectionGate>
       <div className="space-y-4">
-        <div>
-          <h1 className="text-xl font-semibold">Ordrar</h1>
-          <p className="text-sm text-muted mt-1">Se och hantera dina beställningar.</p>
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <h1 className="text-xl font-semibold">Ordrar</h1>
+            <p className="text-sm text-muted mt-1">Se och hantera dina beställningar.</p>
+          </div>
+          <Button variant="secondary" size="sm" onClick={handleExport} disabled={exporting}>
+            {exporting ? <Spinner /> : <Download size={14} />}
+            Exportera CSV
+          </Button>
         </div>
+
+        {exportError && <p className="text-sm text-danger">{exportError}</p>}
 
         <div className="flex flex-wrap gap-3">
           <Input

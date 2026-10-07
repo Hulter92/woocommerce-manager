@@ -129,6 +129,29 @@ async function requestList<T>(
   return { items: data, total, totalPages };
 }
 
+// Fetches every page of a listing, for CSV export — not used by paginated UI
+// tables, which only need one page at a time via requestList.
+async function requestAll<T>(
+  settings: WooSettings,
+  path: string,
+  params: QueryParams
+): Promise<T[]> {
+  const perPage = 100;
+  const all: T[] = [];
+  let page = 1;
+  for (;;) {
+    const { items, totalPages } = await requestList<T>(settings, path, {
+      ...params,
+      per_page: perPage,
+      page,
+    });
+    all.push(...items);
+    if (page >= totalPages || items.length === 0) break;
+    page += 1;
+  }
+  return all;
+}
+
 export async function testConnection(settings: WooSettings): Promise<void> {
   await request(settings, "/products", { params: { per_page: 1 } });
 }
@@ -180,6 +203,20 @@ export async function getOrder(settings: WooSettings, orderId: number): Promise<
   return data;
 }
 
+export async function listAllOrders(
+  settings: WooSettings,
+  options: Omit<ListOrdersOptions, "page" | "perPage"> = {}
+): Promise<WooOrder[]> {
+  const { status = "any", search, customerId } = options;
+  return requestAll<WooOrder>(settings, "/orders", {
+    status,
+    search: search || undefined,
+    customer: customerId,
+    orderby: "date",
+    order: "desc",
+  });
+}
+
 // Products
 
 export interface ListProductsOptions {
@@ -199,6 +236,48 @@ export function listProducts(settings: WooSettings, options: ListProductsOptions
     stock_status: stockStatus,
     category: categoryId,
   });
+}
+
+export async function listAllProducts(
+  settings: WooSettings,
+  options: Omit<ListProductsOptions, "page" | "perPage"> = {}
+): Promise<WooProduct[]> {
+  const { search, stockStatus, categoryId } = options;
+  return requestAll<WooProduct>(settings, "/products", {
+    search: search || undefined,
+    stock_status: stockStatus,
+    category: categoryId,
+  });
+}
+
+export async function findProductBySku(
+  settings: WooSettings,
+  sku: string
+): Promise<WooProduct | null> {
+  const { data } = await request<WooProduct[]>(settings, "/products", {
+    params: { sku, per_page: 1 },
+  });
+  return data[0] ?? null;
+}
+
+export interface CreateProductInput {
+  name: string;
+  sku?: string;
+  type?: WooProduct["type"];
+  regular_price?: string;
+  stock_quantity?: number | null;
+  manage_stock?: boolean;
+}
+
+export async function createProduct(
+  settings: WooSettings,
+  input: CreateProductInput
+): Promise<WooProduct> {
+  const { data } = await request<WooProduct>(settings, "/products", {
+    method: "POST",
+    body: { type: "simple", ...input },
+  });
+  return data;
 }
 
 export async function listCategories(
@@ -311,6 +390,16 @@ export function listCustomers(settings: WooSettings, options: ListCustomersOptio
   return requestList<WooCustomer>(settings, "/customers", {
     page,
     per_page: perPage,
+    search: search || undefined,
+  });
+}
+
+export async function listAllCustomers(
+  settings: WooSettings,
+  options: Omit<ListCustomersOptions, "page" | "perPage"> = {}
+): Promise<WooCustomer[]> {
+  const { search } = options;
+  return requestAll<WooCustomer>(settings, "/customers", {
     search: search || undefined,
   });
 }

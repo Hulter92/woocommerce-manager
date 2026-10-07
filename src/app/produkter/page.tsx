@@ -2,17 +2,21 @@
 
 import { useEffect, useState, useTransition } from "react";
 import Image from "next/image";
-import { Pencil } from "lucide-react";
+import { Download, Pencil, Upload } from "lucide-react";
+import { save } from "@tauri-apps/plugin-dialog";
+import { writeTextFile } from "@tauri-apps/plugin-fs";
 import { useSettings } from "@/components/settings-provider";
 import { ConnectionGate } from "@/components/connection-gate";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input, Select } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { LoadingBlock } from "@/components/ui/spinner";
+import { LoadingBlock, Spinner } from "@/components/ui/spinner";
 import { ProductEditDialog } from "@/components/product-edit-dialog";
 import { BulkEditDialog } from "@/components/bulk-edit-dialog";
-import { listCategories, listProducts, WooCommerceApiError } from "@/lib/woocommerce";
+import { ProductImportDialog } from "@/components/product-import-dialog";
+import { rowsToCsv } from "@/lib/csv";
+import { listAllProducts, listCategories, listProducts, WooCommerceApiError } from "@/lib/woocommerce";
 import type { WooCategory, WooProduct } from "@/lib/types";
 
 const STOCK_LABEL: Record<WooProduct["stock_status"], { label: string; tone: "success" | "danger" | "warning" }> = {
@@ -35,6 +39,9 @@ export default function ProdukterPage() {
   const [editingProduct, setEditingProduct] = useState<WooProduct | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkEditing, setBulkEditing] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!configured) return;
@@ -97,13 +104,80 @@ export default function ProdukterPage() {
 
   const selectedProducts = products.filter((p) => selectedIds.has(p.id));
 
+  async function handleExport() {
+    setExporting(true);
+    setExportError(null);
+    try {
+      const all = await listAllProducts(settings, {
+        search,
+        stockStatus: stockStatus || undefined,
+        categoryId: categoryId || undefined,
+      });
+      const rows: (string | number)[][] = [
+        [
+          "ID",
+          "SKU",
+          "Namn",
+          "Typ",
+          "Ordinarie pris",
+          "Kampanjpris",
+          "Lager",
+          "Lagerstatus",
+          "Status",
+          "Kategorier",
+          "Kort beskrivning",
+          "Beskrivning",
+        ],
+        ...all.map((p) => [
+          p.id,
+          p.sku,
+          p.name,
+          p.type,
+          p.regular_price,
+          p.sale_price,
+          p.stock_quantity ?? "",
+          p.stock_status,
+          p.status,
+          p.categories.map((c) => c.name).join("|"),
+          p.short_description,
+          p.description,
+        ]),
+      ];
+      const path = await save({
+        defaultPath: `Produkter_${new Date().toISOString().slice(0, 10)}.csv`,
+        filters: [{ name: "CSV", extensions: ["csv"] }],
+      });
+      if (path) await writeTextFile(path, rowsToCsv(rows));
+    } catch (err) {
+      setExportError(
+        err instanceof WooCommerceApiError ? err.message : "Kunde inte exportera produkter."
+      );
+    } finally {
+      setExporting(false);
+    }
+  }
+
   return (
     <ConnectionGate>
       <div className="space-y-4">
-        <div>
-          <h1 className="text-xl font-semibold">Produkter</h1>
-          <p className="text-sm text-muted mt-1">Klicka på pennan för att redigera en produkt.</p>
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <h1 className="text-xl font-semibold">Produkter</h1>
+            <p className="text-sm text-muted mt-1">Klicka på pennan för att redigera en produkt.</p>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="secondary" size="sm" onClick={() => setImporting(true)}>
+              <Upload size={14} />
+              Importera CSV
+            </Button>
+            <Button variant="secondary" size="sm" onClick={handleExport} disabled={exporting}>
+              {exporting ? <Spinner /> : <Download size={14} />}
+              Exportera CSV
+            </Button>
+          </div>
         </div>
+
+        {exportError && <p className="text-sm text-danger">{exportError}</p>}
 
         <div className="flex flex-wrap gap-3">
           <Input
@@ -303,6 +377,19 @@ export default function ProdukterPage() {
               return prev.map((p) => byId.get(p.id) ?? p);
             });
             setSelectedIds(new Set());
+          }}
+        />
+      )}
+
+      {importing && (
+        <ProductImportDialog
+          settings={settings}
+          onClose={() => setImporting(false)}
+          onImported={(imported) => {
+            setProducts((prev) => {
+              const byId = new Map(imported.map((p) => [p.id, p]));
+              return prev.map((p) => byId.get(p.id) ?? p);
+            });
           }}
         />
       )}

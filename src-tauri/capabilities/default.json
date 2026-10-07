@@ -12,7 +12,9 @@
     "updater:default",
     "process:default",
     "dialog:allow-save",
+    "dialog:allow-open",
     "fs:allow-write-text-file",
+    "fs:allow-read-text-file",
     {
       "identifier": "http:default",
       "allow": [{ "url": "https://*/*" }, { "url": "http://*/*" }]
