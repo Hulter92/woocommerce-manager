@@ -4,6 +4,7 @@ import type {
   WooCategory,
   WooCustomer,
   WooOrder,
+  WooOrderNote,
   WooOrderStatus,
   WooProduct,
   WooReport,
@@ -200,6 +201,26 @@ export async function trashOrder(settings: WooSettings, orderId: number): Promis
 
 export async function getOrder(settings: WooSettings, orderId: number): Promise<WooOrder> {
   const { data } = await request<WooOrder>(settings, `/orders/${orderId}`);
+  return data;
+}
+
+export async function listOrderNotes(
+  settings: WooSettings,
+  orderId: number
+): Promise<WooOrderNote[]> {
+  const { data } = await request<WooOrderNote[]>(settings, `/orders/${orderId}/notes`);
+  return data;
+}
+
+export async function addOrderNote(
+  settings: WooSettings,
+  orderId: number,
+  note: string
+): Promise<WooOrderNote> {
+  const { data } = await request<WooOrderNote>(settings, `/orders/${orderId}/notes`, {
+    method: "POST",
+    body: { note, customer_note: false },
+  });
   return data;
 }
 

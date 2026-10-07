@@ -1,12 +1,15 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
+import { Printer } from "lucide-react";
 import { Dialog } from "@/components/ui/dialog";
-import { LoadingBlock } from "@/components/ui/spinner";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/input";
+import { LoadingBlock, Spinner } from "@/components/ui/spinner";
 import { OrderStatusBadge } from "@/components/status-badge";
-import { getOrder, WooCommerceApiError } from "@/lib/woocommerce";
+import { addOrderNote, getOrder, listOrderNotes, WooCommerceApiError } from "@/lib/woocommerce";
 import type { WooSettings } from "@/lib/settings";
-import type { WooAddress, WooOrder } from "@/lib/types";
+import type { WooAddress, WooOrder, WooOrderNote } from "@/lib/types";
 
 function formatMoney(value: string | number, currency: string) {
   const amount = Number(value) || 0;
@@ -47,6 +50,11 @@ export function OrderDetailDialog({
   const [order, setOrder] = useState<WooOrder | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, startTransition] = useTransition();
+  const [notes, setNotes] = useState<WooOrderNote[] | null>(null);
+  const [newNote, setNewNote] = useState("");
+  const [addingNote, setAddingNote] = useState(false);
+  const [noteError, setNoteError] = useState<string | null>(null);
+  const [printMode, setPrintMode] = useState<"packing" | "invoice" | null>(null);
 
   useEffect(() => {
     if (orderId === null) return;
@@ -62,10 +70,40 @@ export function OrderDetailDialog({
         setError(err instanceof WooCommerceApiError ? err.message : "Kunde inte hämta ordern.");
       }
     });
+    listOrderNotes(settings, orderId)
+      .then((data) => {
+        if (!cancelled) setNotes(data);
+      })
+      .catch(() => {
+        // Non-critical — the notes list just stays empty.
+      });
     return () => {
       cancelled = true;
     };
   }, [orderId, settings]);
+
+  async function handleAddNote() {
+    if (orderId === null || !newNote.trim()) return;
+    setAddingNote(true);
+    setNoteError(null);
+    try {
+      const note = await addOrderNote(settings, orderId, newNote.trim());
+      setNotes((prev) => [note, ...(prev ?? [])]);
+      setNewNote("");
+    } catch (err) {
+      setNoteError(err instanceof WooCommerceApiError ? err.message : "Kunde inte lägga till notering.");
+    } finally {
+      setAddingNote(false);
+    }
+  }
+
+  function handlePrint(mode: "packing" | "invoice") {
+    setPrintMode(mode);
+    setTimeout(() => {
+      window.print();
+      setPrintMode(null);
+    }, 0);
+  }
 
   const hasShipping = order && formatAddress(order.shipping).length > 0;
 
@@ -78,6 +116,17 @@ export function OrderDetailDialog({
           <div className="flex items-center justify-between">
             <OrderStatusBadge status={order.status} />
             <p className="text-sm text-muted">{formatDate(order.date_created)}</p>
+          </div>
+
+          <div className="flex gap-2">
+            <Button variant="secondary" size="sm" onClick={() => handlePrint("packing")}>
+              <Printer size={14} />
+              Skriv ut följesedel
+            </Button>
+            <Button variant="secondary" size="sm" onClick={() => handlePrint("invoice")}>
+              <Printer size={14} />
+              Skriv ut faktura
+            </Button>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -156,6 +205,100 @@ export function OrderDetailDialog({
               <p className="text-sm bg-muted-bg rounded-md p-3">{order.customer_note}</p>
             </div>
           )}
+
+          <div className="border-t border-border pt-4">
+            <p className="text-xs font-medium text-muted mb-2">Anteckningar</p>
+            {notes === null ? (
+              <p className="text-sm text-muted">Laddar…</p>
+            ) : (
+              <div className="space-y-2 max-h-40 overflow-y-auto mb-3">
+                {notes.length === 0 && <p className="text-sm text-muted">Inga anteckningar än.</p>}
+                {notes.map((note) => (
+                  <div key={note.id} className="text-sm bg-muted-bg rounded-md p-2.5">
+                    <p className="text-xs text-muted mb-0.5">
+                      {formatDate(note.date_created)}
+                      {note.customer_note ? " · Synlig för kunden" : ""}
+                    </p>
+                    <p className="whitespace-pre-wrap">{note.note}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+            {noteError && <p className="text-sm text-danger mb-2">{noteError}</p>}
+            <div className="flex gap-2">
+              <Textarea
+                rows={2}
+                placeholder="Lägg till en notering…"
+                value={newNote}
+                onChange={(e) => setNewNote(e.target.value)}
+              />
+              <Button
+                size="sm"
+                onClick={handleAddNote}
+                disabled={addingNote || !newNote.trim()}
+                className="self-end"
+              >
+                {addingNote && <Spinner />}
+                Lägg till
+              </Button>
+            </div>
+          </div>
+
+          <div className="print-only">
+            <h1 className="text-lg font-semibold mb-1">
+              {printMode === "invoice" ? "Faktura" : "Följesedel"} — Order #{order.number}
+            </h1>
+            <p className="text-sm mb-4">{formatDate(order.date_created)}</p>
+
+            <p className="text-xs font-medium mb-1">
+              {printMode === "invoice" ? "Fakturaadress" : "Leveransadress"}
+            </p>
+            <div className="text-sm mb-4">
+              {formatAddress(printMode === "invoice" || !hasShipping ? order.billing : order.shipping).map(
+                (line, i) => (
+                  <p key={i}>{line}</p>
+                )
+              )}
+            </div>
+
+            <table className="w-full text-sm mb-4">
+              <thead>
+                <tr className="text-left border-b border-black">
+                  <th className="py-1">Produkt</th>
+                  <th className="py-1 text-right">Antal</th>
+                  {printMode === "invoice" && <th className="py-1 text-right">Summa</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {order.line_items.map((item) => (
+                  <tr key={item.id} className="border-b border-black/20">
+                    <td className="py-1">{item.name}</td>
+                    <td className="py-1 text-right">{item.quantity}</td>
+                    {printMode === "invoice" && (
+                      <td className="py-1 text-right">{formatMoney(item.total, order.currency)}</td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {printMode === "invoice" && (
+              <div className="text-sm ml-auto max-w-[220px] space-y-1">
+                <div className="flex justify-between">
+                  <span>Frakt</span>
+                  <span>{formatMoney(order.shipping_total, order.currency)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Moms</span>
+                  <span>{formatMoney(order.total_tax, order.currency)}</span>
+                </div>
+                <div className="flex justify-between font-medium border-t border-black pt-1">
+                  <span>Totalt</span>
+                  <span>{formatMoney(order.total, order.currency)}</span>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </Dialog>

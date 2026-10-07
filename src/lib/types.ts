@@ -45,6 +45,14 @@ export interface WooOrder {
   meta_data: { id: number; key: string; value: unknown }[];
 }
 
+export interface WooOrderNote {
+  id: number;
+  note: string;
+  date_created: string;
+  customer_note: boolean;
+  added_by_user: boolean;
+}
+
 export type WooOrderStatus =
   | "pending"
   | "processing"
